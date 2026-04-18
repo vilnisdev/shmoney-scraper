@@ -1,0 +1,594 @@
+{
+  "meta": {
+    "title": "Sources for finding Baltimore small businesses without websites",
+    "target_market": "Baltimore, MD and surrounding counties",
+    "use_case": "Lead generation for website sales",
+    "priority_sources": [
+      "google_places_api",
+      "yelp_fusion_api",
+      "maryland_business_licenses",
+      "facebook_pages",
+      "industry_specific_directories"
+    ]
+  },
+  "sources": {
+    "map_and_review_platforms": [
+      {
+        "name": "Google Maps / Google Places API",
+        "url": "https://developers.google.com/maps/documentation/places/web-service",
+        "access": "API",
+        "cost": "paid_per_call",
+        "has_website_field": true,
+        "priority": "tier_1"
+      },
+      {
+        "name": "Yelp Fusion API",
+        "url": "https://docs.developer.yelp.com/",
+        "access": "API",
+        "cost": "free_with_limits",
+        "has_website_field": "indirect",
+        "priority": "tier_1"
+      },
+      {
+        "name": "Apple Maps / MapKit Server API",
+        "url": "https://developer.apple.com/documentation/applemapsserverapi",
+        "access": "API",
+        "cost": "free_with_limits",
+        "has_website_field": true,
+        "priority": "tier_2"
+      },
+      {
+        "name": "Bing Places for Business",
+        "url": "https://www.bingplaces.com/",
+        "access": "scrape_or_directory",
+        "cost": "free",
+        "priority": "tier_3"
+      },
+      {
+        "name": "MapQuest business listings",
+        "url": "https://www.mapquest.com/",
+        "access": "scrape",
+        "cost": "free",
+        "priority": "tier_3"
+      },
+      {
+        "name": "Foursquare Places API",
+        "url": "https://developer.foursquare.com/",
+        "access": "API",
+        "cost": "freemium",
+        "priority": "tier_3"
+      },
+      {
+        "name": "TripAdvisor",
+        "url": "https://www.tripadvisor.com/",
+        "access": "scrape_or_api",
+        "cost": "mixed",
+        "priority": "tier_3",
+        "best_for": ["hospitality", "attractions", "tours"]
+      },
+      {
+        "name": "OpenStreetMap / Nominatim",
+        "url": "https://nominatim.openstreetmap.org/",
+        "access": "API",
+        "cost": "free",
+        "priority": "tier_3"
+      }
+    ],
+    "social_media": [
+      {
+        "name": "Facebook Pages",
+        "url": "https://www.facebook.com/",
+        "access": "graph_api_or_scrape",
+        "cost": "free",
+        "priority": "tier_1",
+        "signal": "businesses using FB as their website"
+      },
+      {
+        "name": "Facebook Marketplace",
+        "access": "scrape",
+        "signal": "small sellers without websites"
+      },
+      {
+        "name": "Instagram business profiles",
+        "access": "graph_api_or_scrape",
+        "signal": "linktr.ee or beacons.ai in bio = no real site"
+      },
+      {
+        "name": "TikTok business accounts",
+        "access": "scrape",
+        "signal": "local hashtag search"
+      },
+      {
+        "name": "NextDoor business directory",
+        "url": "https://business.nextdoor.com/",
+        "priority": "tier_2"
+      },
+      {
+        "name": "LinkedIn Company pages",
+        "access": "sales_navigator_or_scrape",
+        "best_for": "B2B services"
+      },
+      {
+        "name": "YouTube local channels",
+        "access": "api",
+        "signal": "small business with YT but no site"
+      },
+      {
+        "name": "Reddit",
+        "subreddits": ["r/baltimore", "r/BaltimoreAndDC", "r/baltimorefood"],
+        "signal": "recommendation threads surface small businesses"
+      },
+      {
+        "name": "X/Twitter business accounts",
+        "access": "api_or_scrape"
+      },
+      {
+        "name": "Pinterest business accounts",
+        "access": "scrape"
+      }
+    ],
+    "government_and_public_records": [
+      {
+        "name": "Maryland Department of Assessments and Taxation",
+        "url": "https://egov.maryland.gov/BusinessExpress/",
+        "cost": "free",
+        "priority": "tier_1",
+        "signal": "newly registered businesses"
+      },
+      {
+        "name": "Maryland Business Express",
+        "url": "https://businessexpress.maryland.gov/",
+        "cost": "free",
+        "priority": "tier_1"
+      },
+      {
+        "name": "Baltimore City business licenses",
+        "url": "https://finance.baltimorecity.gov/",
+        "cost": "free",
+        "priority": "tier_1"
+      },
+      {
+        "name": "Baltimore County business licenses",
+        "cost": "free",
+        "priority": "tier_2"
+      },
+      {
+        "name": "Anne Arundel County licenses",
+        "cost": "free"
+      },
+      {
+        "name": "Howard County licenses",
+        "cost": "free"
+      },
+      {
+        "name": "Harford County licenses",
+        "cost": "free"
+      },
+      {
+        "name": "Carroll County licenses",
+        "cost": "free"
+      },
+      {
+        "name": "Maryland Comptroller sales tax permits",
+        "cost": "free"
+      },
+      {
+        "name": "Baltimore City Board of Liquor License Commissioners",
+        "cost": "free",
+        "best_for": ["bars", "restaurants", "liquor_stores"]
+      },
+      {
+        "name": "Health Department food service permits",
+        "cost": "free",
+        "best_for": ["restaurants", "food_trucks", "caterers"]
+      },
+      {
+        "name": "Maryland Home Improvement Commission (MHIC)",
+        "url": "https://www.dllr.state.md.us/license/mhic/",
+        "cost": "free",
+        "best_for": ["contractors", "remodelers"]
+      },
+      {
+        "name": "Maryland Department of Labor occupational licenses",
+        "cost": "free",
+        "best_for": ["cosmetology", "barbering", "plumbing", "HVAC", "electrical"]
+      },
+      {
+        "name": "Maryland MBE/DBE/WBE/SBE certified business directories",
+        "cost": "free",
+        "signal": "minority/women-owned often underserved by agencies"
+      },
+      {
+        "name": "SAM.gov federal contractor registrations",
+        "url": "https://sam.gov/",
+        "cost": "free"
+      },
+      {
+        "name": "DBA/trade name filings",
+        "cost": "free"
+      },
+      {
+        "name": "Building permits",
+        "cost": "free",
+        "signal": "active contractors"
+      },
+      {
+        "name": "USDOT/FMCSA carrier database",
+        "cost": "free",
+        "best_for": ["trucking", "moving_companies"]
+      },
+      {
+        "name": "EPA contractor certifications",
+        "cost": "free",
+        "best_for": ["lead_abatement", "asbestos"]
+      },
+      {
+        "name": "Maryland Real Estate Commission licensee lookup",
+        "cost": "free",
+        "best_for": ["realtors", "brokers"]
+      }
+    ],
+    "chambers_of_commerce": [
+      {
+        "name": "Greater Baltimore Chamber of Commerce",
+        "priority": "tier_2"
+      },
+      {
+        "name": "Baltimore County Chamber of Commerce"
+      },
+      {
+        "name": "Anne Arundel County Chamber"
+      },
+      {
+        "name": "Howard County Chamber"
+      },
+      {
+        "name": "Harford County Chamber"
+      },
+      {
+        "name": "Hispanic Chamber of Commerce of Baltimore",
+        "priority": "tier_2",
+        "note": "under-prospected, referral compounding"
+      },
+      {
+        "name": "Asian American Chamber of Commerce of Maryland"
+      },
+      {
+        "name": "Maryland Black Chamber of Commerce"
+      },
+      {
+        "name": "Baltimore Jewish Council business directory"
+      },
+      {
+        "name": "Greek American Chamber of Commerce"
+      },
+      {
+        "name": "Indian American Chamber of Commerce"
+      },
+      {
+        "name": "Pakistani American Chamber of Commerce"
+      },
+      {
+        "name": "Baltimore LGBT Chamber of Commerce"
+      },
+      {
+        "name": "Women Business Owners of Maryland"
+      },
+      {
+        "name": "NAWBO Baltimore"
+      }
+    ],
+    "baltimore_specific_directories": [
+      {
+        "name": "Baltimore Business Journal Book of Lists",
+        "url": "https://www.bizjournals.com/baltimore/"
+      },
+      {
+        "name": "Visit Baltimore partner directory",
+        "url": "https://baltimore.org/"
+      },
+      {
+        "name": "Baltimore Magazine Best Of archives",
+        "signal": "qualified good businesses"
+      },
+      {
+        "name": "Baltimore Sun business section archives"
+      },
+      {
+        "name": "Baltimore Fishbowl"
+      },
+      {
+        "name": "Baltimore Beat"
+      },
+      {
+        "name": "The Baltimore Banner business directory"
+      },
+      {
+        "name": "Downtown Partnership of Baltimore"
+      },
+      {
+        "name": "Waterfront Partnership"
+      }
+    ],
+    "main_streets_and_neighborhoods": [
+      {
+        "name": "Baltimore Main Streets program",
+        "corridors": [
+          "Federal Hill",
+          "Fells Point",
+          "Hampden",
+          "Highlandtown",
+          "Pigtown",
+          "Belair-Edison",
+          "Brooklyn",
+          "Waverly",
+          "East Monument"
+        ]
+      },
+      {
+        "name": "Business Improvement Districts",
+        "list": [
+          "Downtown Partnership",
+          "Waterfront Partnership",
+          "Charles Village BID",
+          "Midtown BID"
+        ]
+      },
+      {
+        "name": "Neighborhood associations",
+        "examples": [
+          "Canton",
+          "Mount Vernon",
+          "Station North",
+          "Remington",
+          "Charles Village",
+          "Mount Washington",
+          "Roland Park"
+        ]
+      }
+    ],
+    "industry_specific_directories": {
+      "home_services": [
+        {"name": "Angi", "url": "https://www.angi.com/"},
+        {"name": "HomeAdvisor", "url": "https://www.homeadvisor.com/"},
+        {"name": "Thumbtack", "url": "https://www.thumbtack.com/"},
+        {"name": "Porch", "url": "https://porch.com/"},
+        {"name": "Houzz", "url": "https://www.houzz.com/"},
+        {"name": "TaskRabbit", "url": "https://www.taskrabbit.com/"}
+      ],
+      "legal": [
+        {"name": "Avvo", "url": "https://www.avvo.com/"},
+        {"name": "Justia", "url": "https://www.justia.com/"},
+        {"name": "FindLaw", "url": "https://www.findlaw.com/"},
+        {"name": "Martindale-Hubbell", "url": "https://www.martindale.com/"}
+      ],
+      "medical": [
+        {"name": "Healthgrades", "url": "https://www.healthgrades.com/"},
+        {"name": "Zocdoc", "url": "https://www.zocdoc.com/"},
+        {"name": "Vitals", "url": "https://www.vitals.com/"},
+        {"name": "WebMD physician directory"},
+        {"name": "Psychology Today", "url": "https://www.psychologytoday.com/"},
+        {"name": "GoodTherapy", "url": "https://www.goodtherapy.org/"}
+      ],
+      "beauty_and_wellness": [
+        {"name": "StyleSeat", "url": "https://www.styleseat.com/"},
+        {"name": "Booksy", "url": "https://booksy.com/"},
+        {"name": "Vagaro", "url": "https://www.vagaro.com/"},
+        {"name": "Fresha", "url": "https://www.fresha.com/"},
+        {"name": "Mindbody", "url": "https://www.mindbodyonline.com/"},
+        {"name": "ClassPass", "url": "https://classpass.com/"}
+      ],
+      "wedding_and_events": [
+        {"name": "The Knot", "url": "https://www.theknot.com/"},
+        {"name": "WeddingWire", "url": "https://www.weddingwire.com/"},
+        {"name": "Zola", "url": "https://www.zola.com/"}
+      ],
+      "restaurants": [
+        {"name": "OpenTable", "url": "https://www.opentable.com/"},
+        {"name": "Resy", "url": "https://resy.com/"},
+        {"name": "Grubhub merchant list"},
+        {"name": "DoorDash merchant list"},
+        {"name": "Uber Eats merchant list"},
+        {"name": "Toast customer directory"},
+        {"name": "Square seller directory"}
+      ],
+      "retail_and_commerce": [
+        {"name": "Etsy local sellers"},
+        {"name": "Shopify Baltimore merchants"}
+      ],
+      "automotive": [
+        {"name": "AutoTrader dealer listings"},
+        {"name": "Cars.com dealer listings"},
+        {"name": "CarGurus dealer listings"},
+        {"name": "RepairPal", "url": "https://repairpal.com/"}
+      ],
+      "general": [
+        {"name": "Yellow Pages / YP.com"},
+        {"name": "Superpages"},
+        {"name": "Manta"},
+        {"name": "BBB Baltimore", "url": "https://www.bbb.org/us/md/baltimore"},
+        {"name": "Dun & Bradstreet"},
+        {"name": "Chamber of Commerce.com"}
+      ]
+    },
+    "real_estate_and_location": [
+      {
+        "name": "CoStar commercial tenant listings",
+        "cost": "paid"
+      },
+      {
+        "name": "LoopNet",
+        "cost": "freemium"
+      },
+      {
+        "name": "Google Street View drive-throughs",
+        "cost": "free"
+      },
+      {
+        "name": "Commercial corridor walk-bys",
+        "corridors": [
+          "Eastern Avenue",
+          "Harford Road",
+          "Belair Road",
+          "Liberty Heights Avenue",
+          "Reisterstown Road",
+          "Greenmount Avenue",
+          "Pennsylvania Avenue",
+          "Light Street",
+          "Fort Avenue",
+          "North Avenue",
+          "Edmondson Avenue",
+          "Frederick Road (Catonsville)",
+          "Main Street (Ellicott City)",
+          "Main Street (Reisterstown)",
+          "Dundalk Avenue"
+        ]
+      },
+      {
+        "name": "Shopping centers and strip malls"
+      },
+      {
+        "name": "Farmers markets",
+        "venues": [
+          "Baltimore Farmers' Market (JFX)",
+          "32nd Street Farmers Market",
+          "Waverly Farmers Market"
+        ]
+      }
+    ],
+    "events_and_community": [
+      {"name": "Artscape vendor lists"},
+      {"name": "Charm City Night Market"},
+      {"name": "Pride Festival vendors"},
+      {"name": "African American Heritage Festival"},
+      {"name": "Fells Point Fun Festival"},
+      {"name": "Honfest"},
+      {"name": "Maryland Home & Garden Show"},
+      {"name": "Baltimore Convention Center trade shows"},
+      {"name": "Eventbrite local events"},
+      {"name": "Meetup.com business groups"}
+    ],
+    "referral_networks": [
+      {"name": "BNI Baltimore chapters"},
+      {"name": "LeTip Baltimore"},
+      {"name": "Provisors Baltimore"},
+      {"name": "Rotary Club"},
+      {"name": "Kiwanis"},
+      {"name": "Toastmasters"},
+      {"name": "SCORE Baltimore"},
+      {"name": "SBA Maryland resource partners"},
+      {"name": "Maryland Small Business Development Center"},
+      {"name": "Baltimore Development Corporation"}
+    ],
+    "print_and_offline": [
+      {"name": "Baltimore Sun", "type": "newspaper"},
+      {"name": "Baltimore Business Journal", "type": "newspaper"},
+      {"name": "Baltimore Guide", "type": "community_paper"},
+      {"name": "The Dundalk Eagle", "type": "community_paper"},
+      {"name": "Catonsville Times", "type": "community_paper"},
+      {"name": "Towson Times", "type": "community_paper"},
+      {"name": "Messenger", "type": "community_paper"},
+      {"name": "Baltimore's Child", "type": "magazine"},
+      {"name": "Baltimore STYLE", "type": "magazine"},
+      {"name": "Valpak", "type": "direct_mail", "signal": "every advertiser is a prospect"},
+      {"name": "Money Mailer", "type": "direct_mail"},
+      {"name": "Physical Yellow Pages"},
+      {"name": "Church bulletins"},
+      {"name": "Community center newsletters"},
+      {"name": "Supermarket / coffee shop / library bulletin boards"},
+      {"name": "Windshield flyers in parking lots"},
+      {"name": "Billboards and vehicle wraps"},
+      {"name": "Truck and van signage"}
+    ],
+    "employment_signals": [
+      {
+        "name": "Indeed",
+        "signal": "hiring = revenue + growth intent"
+      },
+      {"name": "ZipRecruiter"},
+      {"name": "Craigslist jobs/gigs"},
+      {"name": "Facebook Jobs"},
+      {"name": "Local Facebook hiring groups"},
+      {"name": "Handshake"}
+    ],
+    "paid_data_providers": [
+      {"name": "ZoomInfo", "cost": "expensive"},
+      {"name": "Apollo.io", "cost": "freemium"},
+      {"name": "Seamless.ai", "cost": "paid"},
+      {"name": "LeadIQ", "cost": "paid"},
+      {"name": "UpLead", "cost": "paid"},
+      {"name": "Lusha", "cost": "freemium"},
+      {"name": "Hunter.io", "cost": "freemium", "use": "email_finding"},
+      {"name": "Clearbit", "cost": "paid"},
+      {"name": "Crunchbase", "cost": "freemium"},
+      {"name": "Data Axle", "cost": "paid"},
+      {"name": "Reference Solutions via Enoch Pratt Library", "cost": "free_with_library_card"}
+    ],
+    "review_and_complaint_sites": [
+      {"name": "Google Reviews"},
+      {"name": "Yelp Reviews"},
+      {"name": "Trustpilot"},
+      {"name": "ConsumerAffairs"},
+      {"name": "Ripoff Report", "signal": "reputation rebuild opportunity"}
+    ],
+    "niche_and_emerging": [
+      {"name": "Alignable"},
+      {"name": "CityLocal Pro"},
+      {"name": "Fiverr local services"},
+      {"name": "Upwork"},
+      {"name": "Substack local newsletters"},
+      {"name": "Local podcast sponsor lists"}
+    ],
+    "ethnic_and_international_community": [
+      {"name": "Baltimore Chinatown associations"},
+      {"name": "Korean American business directories"},
+      {"name": "Ethiopian/Eritrean business directories"},
+      {"name": "Centro SOL Latino directory"},
+      {"name": "CASA de Maryland business network"},
+      {"name": "African immigrant business networks"},
+      {"name": "Caribbean American business associations"},
+      {
+        "name": "WeChat/WhatsApp/Telegram community groups",
+        "access": "requires_local_contact"
+      }
+    ],
+    "cold_walk_territory": [
+      {
+        "name": "Strip malls along I-83, I-695, I-95 corridors"
+      },
+      {
+        "name": "Industrial parks",
+        "locations": ["Rosedale", "Halethorpe", "Curtis Bay", "Holabird"]
+      },
+      {
+        "name": "Small business incubators",
+        "list": [
+          "ETC Baltimore",
+          "FastForward U",
+          "Open Works",
+          "Betamore"
+        ]
+      },
+      {
+        "name": "Flea markets",
+        "list": ["Patapsco Flea Market", "North Point Flea Market"]
+      }
+    ]
+  },
+  "recommended_pipeline": {
+    "start_with": [
+      "google_places_api",
+      "yelp_fusion_api",
+      "maryland_business_licenses",
+      "facebook_pages"
+    ],
+    "plus_one_vertical_specific": [
+      "angi_or_thumbtack_for_contractors",
+      "healthgrades_for_medical",
+      "styleseat_for_beauty",
+      "avvo_for_legal"
+    ],
+    "expected_lead_volume": "500-1500 qualified leads across 2-3 verticals in Baltimore",
+    "estimated_api_cost": "$100-$300 for full Baltimore sweep"
+  }
+}
