@@ -4,7 +4,7 @@ from .config import load_config
 from .orchestrator import run_once
 from .repo import Repository
 from .sheets import SheetsWriter
-from .sources.sdat import MarylandSDATAdapter
+from .sources.opencorporates import OpenCorporatesMDAdapter
 from .sources.yelp import YelpFusionAdapter
 
 app = typer.Typer(help="Baltimore small business lead pipeline")
@@ -65,14 +65,13 @@ def run(
                 api_key=cfg.yelp_api_key, location=location, term=term, limit=limit
             )
         elif source == "md-sdat":
-            if not cfg.sdat_resource_path:
+            if not cfg.opencorporates_api_token:
                 raise typer.BadParameter(
-                    "SDAT_RESOURCE_PATH env var required for source 'md-sdat'"
+                    "OPENCORPORATES_API_TOKEN env var required for source 'md-sdat'"
                 )
-            adapter = MarylandSDATAdapter(
-                resource_path=cfg.sdat_resource_path,
-                base_url=cfg.sdat_base_url,
-                app_token=cfg.sdat_app_token,
+            adapter = OpenCorporatesMDAdapter(
+                api_token=cfg.opencorporates_api_token,
+                query=cfg.opencorporates_query or term,
                 limit=limit,
             )
         else:
