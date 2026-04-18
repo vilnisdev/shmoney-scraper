@@ -73,3 +73,12 @@ def test_missing_column_raises(fake_ws):
     fake_ws.append_row(["Business Name", "Phone Number"])
     with pytest.raises(ValueError, match="missing columns"):
         SheetsWriter(fake_ws).ensure_schema()
+
+
+def test_ensure_schema_auto_adds_canonical_key(fake_ws):
+    from shmoney.sheets import COLUMNS as _C
+
+    header_without_key = [c for c in _C if c != "Canonical Key"]
+    fake_ws.append_row(header_without_key)
+    SheetsWriter(fake_ws).ensure_schema()
+    assert fake_ws.rows[0][-1] == "Canonical Key"

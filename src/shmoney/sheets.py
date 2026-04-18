@@ -9,8 +9,8 @@ COLUMNS: list[str] = [
     "Neighborhood / Area",
     "Business Type",
     "Source Found",
-    "Online Presence (1-5)",
-    "Website URL (if any)",
+    "Online Presence\n(1-5 scale)",
+    "Website URL\n(if any)",
     "Yelp / Google Listing?",
     "# of Reviews",
     "Estimated Annual Revenue",
@@ -55,7 +55,10 @@ class SheetsWriter:
             self._row_count = 1
             self._loaded = True
             return
-        header = values[0]
+        header = list(values[0])
+        if CANONICAL_KEY_COL not in header:
+            header.append(CANONICAL_KEY_COL)
+            self.ws.batch_update_cells([(1, len(header), CANONICAL_KEY_COL)])
         missing = [c for c in COLUMNS if c not in header]
         if missing:
             raise ValueError(f"Sheet missing columns: {missing}")

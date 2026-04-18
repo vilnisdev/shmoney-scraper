@@ -14,7 +14,7 @@ _COL_MAP: dict[str, str] = {
     "neighborhood": "Neighborhood / Area",
     "business_type": "Business Type",
     "source": "Source Found",
-    "website": "Website URL (if any)",
+    "website": "Website URL\n(if any)",
     "yelp_or_google_listing": "Yelp / Google Listing?",
     "review_count": "# of Reviews",
 }
