@@ -8,8 +8,9 @@ from shmoney.sources.base import RawBusiness, SourceAdapter
 class StubAdapter(SourceAdapter):
     source_name = "yelp"
 
-    def __init__(self, rows):
+    def __init__(self, rows, source_name="yelp"):
         self._rows = rows
+        self.source_name = source_name
 
     def iter_businesses(self):
         yield from self._rows
@@ -87,6 +88,38 @@ def test_real_website_filtered_out(tmp_path, fake_ws):
     tags = [fake_ws.rows[r][_col("Consulting Opportunity")] for r in (1, 2)]
     assert "no website" in tags
     assert "social-only (facebook)" in tags
+
+
+def test_sdat_merges_into_existing_yelp_row(tmp_path, fake_ws):
+    yelp_raw = RawBusiness(
+        source="yelp",
+        name="Joe's Pizza",
+        address="123 Main St, Baltimore, MD 21230",
+        phone="410-555-1234",
+        website=None,
+        yelp_or_google_listing="https://yelp.com/biz/joes",
+    )
+    sdat_raw = RawBusiness(
+        source="md-sdat",
+        name="JOE'S PIZZA LLC",
+        address="123 Main St, Baltimore, MD 21230",
+        owner_name="Jane Doe",
+        registered_at="2019-03-15",
+    )
+    repo = Repository(tmp_path / "t.db")
+    writer = SheetsWriter(fake_ws)
+
+    run_once(StubAdapter([yelp_raw], source_name="yelp"), repo, writer)
+    run_once(StubAdapter([sdat_raw], source_name="md-sdat"), repo, writer)
+
+    assert len(fake_ws.rows) == 2
+    row = fake_ws.rows[1]
+    assert row[_col("Business Name")] == "Joe's Pizza"
+    assert row[_col("Phone Number")] == "410-555-1234"
+    assert row[_col("Owner Name")] == "Jane Doe"
+    assert row[_col("Source Found")] == "yelp"
+    assert row[_col("Years in Business")] != ""
+    assert int(row[_col("Years in Business")]) >= 5
 
 
 def test_rerun_does_not_duplicate(tmp_path, fake_ws):

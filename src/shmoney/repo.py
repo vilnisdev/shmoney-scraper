@@ -62,12 +62,13 @@ class Repository:
                 owner_name, registered_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(canonical_key) DO UPDATE SET
-                name = excluded.name,
-                address = excluded.address,
+                name = COALESCE(businesses.name, excluded.name),
+                address = COALESCE(businesses.address, excluded.address),
                 phone = COALESCE(excluded.phone, businesses.phone),
                 website = COALESCE(excluded.website, businesses.website),
                 neighborhood = COALESCE(excluded.neighborhood, businesses.neighborhood),
                 business_type = COALESCE(excluded.business_type, businesses.business_type),
+                source = COALESCE(businesses.source, excluded.source),
                 yelp_or_google_listing = COALESCE(excluded.yelp_or_google_listing, businesses.yelp_or_google_listing),
                 review_count = COALESCE(excluded.review_count, businesses.review_count),
                 owner_name = COALESCE(excluded.owner_name, businesses.owner_name),

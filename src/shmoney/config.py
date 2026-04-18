@@ -11,6 +11,8 @@ class Config:
     google_sheet_id: str
     google_sa_json_path: Path
     db_path: Path
+    opencorporates_api_token: str | None
+    opencorporates_query: str
 
 
 def load_config() -> Config:
@@ -24,4 +26,6 @@ def load_config() -> Config:
         google_sheet_id=os.environ["GOOGLE_SHEET_ID"],
         google_sa_json_path=Path(os.environ["GOOGLE_SA_JSON_PATH"]),
         db_path=Path(os.environ.get("DB_PATH", "data/pipeline.db")),
+        opencorporates_api_token=os.environ.get("OPENCORPORATES_API_TOKEN") or None,
+        opencorporates_query=os.environ.get("OPENCORPORATES_QUERY", ""),
     )
