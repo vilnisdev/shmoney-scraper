@@ -56,7 +56,10 @@ class SheetsWriter:
             self._loaded = True
             return
         header = list(values[0])
+        has_data_rows = len(values) > 1 and any(any(r) for r in values[1:])
         if CANONICAL_KEY_COL not in header:
+            if has_data_rows:
+                raise ValueError(f"Sheet missing columns: ['{CANONICAL_KEY_COL}']")
             header.append(CANONICAL_KEY_COL)
             self.ws.batch_update_cells([(1, len(header), CANONICAL_KEY_COL)])
         missing = [c for c in COLUMNS if c not in header]
