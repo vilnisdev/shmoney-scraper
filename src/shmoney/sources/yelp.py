@@ -40,10 +40,10 @@ class YelpFusionAdapter(SourceAdapter):
                 name=biz.get("name", ""),
                 address=" ".join(biz.get("location", {}).get("display_address", [])),
                 phone=biz.get("display_phone") or biz.get("phone") or None,
-                website=biz.get("url"),
+                website=None,
                 neighborhood=", ".join(biz.get("location", {}).get("neighborhoods", []) or []) or None,
                 business_type=", ".join(c.get("title", "") for c in biz.get("categories", [])) or None,
-                yelp_or_google_listing="Yelp",
+                yelp_or_google_listing=biz.get("url") or "Yelp",
                 review_count=biz.get("review_count"),
                 raw=biz,
             )

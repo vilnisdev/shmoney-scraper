@@ -45,7 +45,8 @@ def test_parses_single_business():
     assert b.neighborhood == "Federal Hill"
     assert "Pizza" in b.business_type
     assert b.review_count == 42
-    assert b.yelp_or_google_listing == "Yelp"
+    assert b.website is None  # Fusion url is Yelp page, not real website
+    assert "yelp.com/biz/joes-pizza" in (b.yelp_or_google_listing or "")
 
 
 def test_empty_businesses_list():
