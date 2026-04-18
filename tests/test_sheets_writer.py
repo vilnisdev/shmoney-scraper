@@ -75,6 +75,17 @@ def test_missing_column_raises(fake_ws):
         SheetsWriter(fake_ws).ensure_schema()
 
 
+def test_upsert_with_extra_trailing_column(fake_ws):
+    from shmoney.sheets import COLUMNS as _C
+
+    fake_ws.append_row(list(_C) + ["Spare"])
+    w = SheetsWriter(fake_ws)
+    w.upsert("key1", {"Business Name": "Joe's", "Address": "1 Main"})
+    assert len(fake_ws.rows) == 2
+    assert fake_ws.rows[1][_col("Canonical Key")] == "key1"
+    assert fake_ws.rows[1][_col("Business Name")] == "Joe's"
+
+
 def test_ensure_schema_auto_adds_canonical_key(fake_ws):
     from shmoney.sheets import COLUMNS as _C
 

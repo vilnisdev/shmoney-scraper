@@ -77,7 +77,7 @@ class SheetsWriter:
             row_idx = self._key_to_row[canonical_key]
             self._update_row(row_idx, business, canonical_key)
             return row_idx
-        row = [""] * len(COLUMNS)
+        row = [""] * (max(self._header_index.values()) + 1)
         for col, val in business.items():
             if col in OPERATOR_COLUMNS:
                 continue
