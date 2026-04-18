@@ -4,6 +4,7 @@ from .config import load_config
 from .orchestrator import run_once
 from .repo import Repository
 from .sheets import SheetsWriter
+from .sources.sdat import MarylandSDATAdapter
 from .sources.yelp import YelpFusionAdapter
 
 app = typer.Typer(help="Baltimore small business lead pipeline")
@@ -56,14 +57,26 @@ def run(
     term: str = "restaurants",
     limit: int = 20,
 ) -> None:
-    if source != "yelp":
-        raise typer.BadParameter(f"source {source!r} not implemented in v1 tracer")
     cfg = load_config()
     repo = Repository(cfg.db_path)
     try:
-        adapter = YelpFusionAdapter(
-            api_key=cfg.yelp_api_key, location=location, term=term, limit=limit
-        )
+        if source == "yelp":
+            adapter = YelpFusionAdapter(
+                api_key=cfg.yelp_api_key, location=location, term=term, limit=limit
+            )
+        elif source == "md-sdat":
+            if not cfg.sdat_resource_path:
+                raise typer.BadParameter(
+                    "SDAT_RESOURCE_PATH env var required for source 'md-sdat'"
+                )
+            adapter = MarylandSDATAdapter(
+                resource_path=cfg.sdat_resource_path,
+                base_url=cfg.sdat_base_url,
+                app_token=cfg.sdat_app_token,
+                limit=limit,
+            )
+        else:
+            raise typer.BadParameter(f"source {source!r} not implemented")
         ws = _GspreadWorksheetAdapter(_gspread_worksheet(cfg))
         writer = SheetsWriter(ws)
         n = run_once(adapter, repo, writer)
