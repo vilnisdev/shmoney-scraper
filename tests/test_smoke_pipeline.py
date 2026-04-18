@@ -25,10 +25,10 @@ def test_smoke_end_to_end(tmp_path, fake_ws):
         name="Joe's Pizza",
         address="123 Main St, Baltimore, MD",
         phone="410-555-1234",
-        website="https://yelp.com/biz/joes",
+        website=None,
         neighborhood="Federal Hill",
         business_type="Pizza",
-        yelp_or_google_listing="Yelp",
+        yelp_or_google_listing="https://yelp.com/biz/joes",
         review_count=42,
     )
     adapter = StubAdapter([raw])
@@ -67,6 +67,26 @@ def test_smoke_end_to_end(tmp_path, fake_ws):
         ).fetchone()[0]
         == 1
     )
+
+
+def test_real_website_filtered_out(tmp_path, fake_ws):
+    has_real = RawBusiness(
+        source="yelp", name="Good Biz", address="1 Main", website="https://goodbiz.com"
+    )
+    no_site = RawBusiness(source="yelp", name="Bad Biz", address="2 Main", website=None)
+    social = RawBusiness(
+        source="yelp",
+        name="Social Biz",
+        address="3 Main",
+        website="https://facebook.com/socialbiz",
+    )
+    repo = Repository(tmp_path / "t.db")
+    writer = SheetsWriter(fake_ws)
+    n = run_once(StubAdapter([has_real, no_site, social]), repo, writer)
+    assert n == 2  # real-site business excluded
+    tags = [fake_ws.rows[r][_col("Consulting Opportunity")] for r in (1, 2)]
+    assert "no website" in tags
+    assert "social-only (facebook)" in tags
 
 
 def test_rerun_does_not_duplicate(tmp_path, fake_ws):
