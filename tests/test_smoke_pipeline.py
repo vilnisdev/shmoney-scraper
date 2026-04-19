@@ -1,8 +1,26 @@
+from shmoney.audit import AuditFlags, AuditReport
 from shmoney.canonicalize import canonical_key
 from shmoney.orchestrator import run_once
 from shmoney.repo import Repository
 from shmoney.sheets import COLUMNS, SheetsWriter
 from shmoney.sources.base import RawBusiness, SourceAdapter
+
+
+class _StrongAuditor:
+    def audit(self, url):
+        return AuditReport(
+            flags=AuditFlags(
+                reachable=True, https=True, redirects_to_https=False,
+                has_viewport=True, body_substantial=True,
+                response_time_ok=True, last_modified_fresh=True,
+            ),
+            fetched_at="2026-04-19T00:00:00+00:00",
+            status_code=200,
+            elapsed_ms=100,
+        )
+
+    def close(self):
+        pass
 
 
 class StubAdapter(SourceAdapter):
@@ -83,7 +101,7 @@ def test_real_website_filtered_out(tmp_path, fake_ws):
     )
     repo = Repository(tmp_path / "t.db")
     writer = SheetsWriter(fake_ws)
-    n = run_once(StubAdapter([has_real, no_site, social]), repo, writer)
+    n = run_once(StubAdapter([has_real, no_site, social]), repo, writer, _StrongAuditor())
     assert n == 2  # real-site business excluded
     tags = [fake_ws.rows[r][_col("Consulting Opportunity")] for r in (1, 2)]
     assert "no website" in tags

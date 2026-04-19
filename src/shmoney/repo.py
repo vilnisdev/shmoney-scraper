@@ -1,8 +1,10 @@
 import json
 import sqlite3
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
+from .audit import AuditFlags, AuditReport
 from .sources.base import RawBusiness
 
 _SCHEMA = """
@@ -35,6 +37,20 @@ CREATE TABLE IF NOT EXISTS sheet_row_map (
     canonical_key TEXT PRIMARY KEY,
     row_index INTEGER NOT NULL,
     last_written_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS audits (
+    canonical_key TEXT PRIMARY KEY,
+    reachable INTEGER NOT NULL,
+    https INTEGER NOT NULL,
+    redirects_to_https INTEGER NOT NULL,
+    has_viewport INTEGER NOT NULL,
+    body_substantial INTEGER NOT NULL,
+    response_time_ok INTEGER NOT NULL,
+    last_modified_fresh INTEGER NOT NULL,
+    fetched_at TEXT NOT NULL,
+    status_code INTEGER,
+    elapsed_ms INTEGER
 );
 """
 
@@ -114,6 +130,77 @@ class Repository:
             (canonical_key,),
         ).fetchone()
         return int(row["row_index"]) if row else None
+
+    def record_audit(self, canonical_key: str, report: AuditReport) -> None:
+        f = report.flags
+        self.conn.execute(
+            """
+            INSERT INTO audits (
+                canonical_key, reachable, https, redirects_to_https,
+                has_viewport, body_substantial, response_time_ok,
+                last_modified_fresh, fetched_at, status_code, elapsed_ms
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(canonical_key) DO UPDATE SET
+                reachable = excluded.reachable,
+                https = excluded.https,
+                redirects_to_https = excluded.redirects_to_https,
+                has_viewport = excluded.has_viewport,
+                body_substantial = excluded.body_substantial,
+                response_time_ok = excluded.response_time_ok,
+                last_modified_fresh = excluded.last_modified_fresh,
+                fetched_at = excluded.fetched_at,
+                status_code = excluded.status_code,
+                elapsed_ms = excluded.elapsed_ms
+            """,
+            (
+                canonical_key,
+                int(f.reachable),
+                int(f.https),
+                int(f.redirects_to_https),
+                int(f.has_viewport),
+                int(f.body_substantial),
+                int(f.response_time_ok),
+                int(f.last_modified_fresh),
+                report.fetched_at,
+                report.status_code,
+                report.elapsed_ms,
+            ),
+        )
+
+    def get_audit(self, canonical_key: str) -> Optional[AuditReport]:
+        row = self.conn.execute(
+            "SELECT * FROM audits WHERE canonical_key = ?", (canonical_key,)
+        ).fetchone()
+        if not row:
+            return None
+        return AuditReport(
+            flags=AuditFlags(
+                reachable=bool(row["reachable"]),
+                https=bool(row["https"]),
+                redirects_to_https=bool(row["redirects_to_https"]),
+                has_viewport=bool(row["has_viewport"]),
+                body_substantial=bool(row["body_substantial"]),
+                response_time_ok=bool(row["response_time_ok"]),
+                last_modified_fresh=bool(row["last_modified_fresh"]),
+            ),
+            fetched_at=row["fetched_at"],
+            status_code=int(row["status_code"]) if row["status_code"] is not None else 0,
+            elapsed_ms=int(row["elapsed_ms"]) if row["elapsed_ms"] is not None else 0,
+        )
+
+    def is_audit_fresh(self, canonical_key: str, max_age_days: int = 30) -> bool:
+        row = self.conn.execute(
+            "SELECT fetched_at FROM audits WHERE canonical_key = ?", (canonical_key,)
+        ).fetchone()
+        if not row:
+            return False
+        try:
+            dt = datetime.fromisoformat(row["fetched_at"])
+        except ValueError:
+            return False
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return datetime.now(timezone.utc) - dt <= timedelta(days=max_age_days)
 
     def close(self) -> None:
         self.conn.close()
