@@ -5,6 +5,7 @@ from .config import load_config
 from .orchestrator import run_once
 from .repo import Repository
 from .sheets import SheetsWriter
+from .sources.facebook import FacebookPagesAdapter
 from .sources.opencorporates import OpenCorporatesMDAdapter
 from .sources.yelp import YelpFusionAdapter
 
@@ -73,6 +74,22 @@ def run(
             adapter = OpenCorporatesMDAdapter(
                 api_token=cfg.opencorporates_api_token,
                 query=cfg.opencorporates_query or term,
+                limit=limit,
+            )
+        elif source == "facebook":
+            seeds_path = cfg.facebook_seeds_file
+            if not seeds_path.exists():
+                raise typer.BadParameter(
+                    f"facebook seeds file not found: {seeds_path}"
+                )
+            urls = [
+                line.strip()
+                for line in seeds_path.read_text().splitlines()
+                if line.strip() and not line.startswith("#")
+            ]
+            adapter = FacebookPagesAdapter(
+                user_agent=cfg.facebook_user_agent,
+                page_urls=urls,
                 limit=limit,
             )
         else:
