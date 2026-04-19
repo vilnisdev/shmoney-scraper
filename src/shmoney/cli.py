@@ -1,5 +1,6 @@
 import typer
 
+from .audit import WebsiteAuditor
 from .config import load_config
 from .orchestrator import run_once
 from .repo import Repository
@@ -78,7 +79,11 @@ def run(
             raise typer.BadParameter(f"source {source!r} not implemented")
         ws = _GspreadWorksheetAdapter(_gspread_worksheet(cfg))
         writer = SheetsWriter(ws)
-        n = run_once(adapter, repo, writer)
+        auditor = WebsiteAuditor()
+        try:
+            n = run_once(adapter, repo, writer, auditor)
+        finally:
+            auditor.close()
         typer.echo(f"upserted {n} rows")
     finally:
         repo.close()
