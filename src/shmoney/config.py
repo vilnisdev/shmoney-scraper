@@ -13,6 +13,8 @@ class Config:
     db_path: Path
     opencorporates_api_token: str | None
     opencorporates_query: str
+    facebook_user_agent: str
+    facebook_seeds_file: Path
 
 
 def load_config() -> Config:
@@ -28,4 +30,11 @@ def load_config() -> Config:
         db_path=Path(os.environ.get("DB_PATH", "data/pipeline.db")),
         opencorporates_api_token=os.environ.get("OPENCORPORATES_API_TOKEN") or None,
         opencorporates_query=os.environ.get("OPENCORPORATES_QUERY", ""),
+        facebook_user_agent=os.environ.get(
+            "FACEBOOK_USER_AGENT",
+            "shmoney-scraper (contact: ops@example.com)",
+        ),
+        facebook_seeds_file=Path(
+            os.environ.get("FACEBOOK_SEEDS_FILE", "data/facebook_seeds.txt")
+        ),
     )
