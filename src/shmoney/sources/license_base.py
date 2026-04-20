@@ -27,12 +27,16 @@ class LicenseAdapterBase(SourceAdapter):
         min_interval_s: float = 0.5,
         now: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], None] = time.sleep,
+        start_offset: int = 0,
+        checkpoint: Optional[Callable[[int], None]] = None,
     ):
         self.page_size = page_size if page_size is not None else self.default_page_size
         self.limit = limit
         self.min_interval_s = min_interval_s
         self._now = now
         self._sleep = sleep
+        self._start_offset = start_offset
+        self._checkpoint = checkpoint
         self._client = client if client is not None else self._build_default_client()
 
     @abstractmethod
@@ -51,7 +55,7 @@ class LicenseAdapterBase(SourceAdapter):
 
     def iter_businesses(self) -> Iterator[RawBusiness]:
         emitted = 0
-        offset = 0
+        offset = self._start_offset
         last_fetch_at: Optional[float] = None
 
         while True:
@@ -78,6 +82,9 @@ class LicenseAdapterBase(SourceAdapter):
                 yield raw
                 emitted += 1
 
+            offset += len(records)
+            if self._checkpoint is not None:
+                self._checkpoint(offset)
+
             if not has_more:
                 return
-            offset += len(records)
