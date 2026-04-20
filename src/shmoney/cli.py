@@ -5,6 +5,7 @@ from .config import load_config
 from .orchestrator import run_once
 from .repo import Repository
 from .sheets import SheetsWriter
+from .sources.howard import HowardLicenseAdapter
 from .sources.opencorporates import OpenCorporatesMDAdapter
 from .sources.yelp import YelpFusionAdapter
 
@@ -74,6 +75,12 @@ def run(
                 api_token=cfg.opencorporates_api_token,
                 query=cfg.opencorporates_query or term,
                 limit=limit,
+            )
+        elif source == "howard":
+            adapter = HowardLicenseAdapter(limit=limit)
+        elif source in {"harford", "carroll"}:
+            raise typer.BadParameter(
+                f"source {source!r} has no public license feed — see docs/license-sources.md"
             )
         else:
             raise typer.BadParameter(f"source {source!r} not implemented")
