@@ -27,13 +27,29 @@ def _gspread_worksheet(cfg):
 
 
 class _GspreadWorksheetAdapter:
+    # Google Sheets API caps writes at 60/min/user/project. Sleep between
+    # writes to stay under that. 1.1s leaves slack for clock drift.
+    _MIN_WRITE_INTERVAL_S = 1.1
+
     def __init__(self, ws):
+        import time as _time
         self._ws = ws
+        self._time = _time
+        self._last_write_at: float | None = None
+
+    def _throttle(self) -> None:
+        if self._last_write_at is not None:
+            elapsed = self._time.monotonic() - self._last_write_at
+            wait = self._MIN_WRITE_INTERVAL_S - elapsed
+            if wait > 0:
+                self._time.sleep(wait)
+        self._last_write_at = self._time.monotonic()
 
     def get_all_values(self):
         return self._ws.get_all_values()
 
     def append_row(self, values):
+        self._throttle()
         self._ws.append_row(values, value_input_option="RAW")
 
     def batch_update_cells(self, updates):
@@ -41,6 +57,7 @@ class _GspreadWorksheetAdapter:
 
         cells = [gspread.Cell(r, c, v) for r, c, v in updates]
         if cells:
+            self._throttle()
             self._ws.update_cells(cells, value_input_option="RAW")
 
 
