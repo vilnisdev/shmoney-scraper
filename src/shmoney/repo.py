@@ -39,6 +39,12 @@ CREATE TABLE IF NOT EXISTS sheet_row_map (
     last_written_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS source_watermarks (
+    source TEXT PRIMARY KEY,
+    cursor INTEGER NOT NULL DEFAULT 0,
+    last_run_ts TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS audits (
     canonical_key TEXT PRIMARY KEY,
     reachable INTEGER NOT NULL,
@@ -131,6 +137,12 @@ class Repository:
         ).fetchone()
         return int(row["row_index"]) if row else None
 
+    def list_sheet_keys(self) -> list[str]:
+        rows = self.conn.execute(
+            "SELECT canonical_key FROM sheet_row_map ORDER BY row_index"
+        ).fetchall()
+        return [row["canonical_key"] for row in rows]
+
     def record_audit(self, canonical_key: str, report: AuditReport) -> None:
         f = report.flags
         self.conn.execute(
@@ -201,6 +213,31 @@ class Repository:
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
         return datetime.now(timezone.utc) - dt <= timedelta(days=max_age_days)
+
+    def get_watermark(self, source: str) -> int:
+        row = self.conn.execute(
+            "SELECT cursor FROM source_watermarks WHERE source = ?", (source,)
+        ).fetchone()
+        return int(row["cursor"]) if row else 0
+
+    def set_watermark(self, source: str, cursor: int) -> None:
+        self.conn.execute(
+            """
+            INSERT INTO source_watermarks (source, cursor) VALUES (?, ?)
+            ON CONFLICT(source) DO UPDATE SET
+                cursor = excluded.cursor,
+                last_run_ts = CURRENT_TIMESTAMP
+            """,
+            (source, cursor),
+        )
+
+    def clear_watermark(self, source: str) -> None:
+        self.conn.execute("DELETE FROM source_watermarks WHERE source = ?", (source,))
+
+    def reset(self) -> None:
+        for table in ("raw_fetches", "businesses", "sheet_row_map",
+                      "source_watermarks", "audits"):
+            self.conn.execute(f"DELETE FROM {table}")
 
     def close(self) -> None:
         self.conn.close()

@@ -54,7 +54,7 @@ def test_smoke_end_to_end(tmp_path, fake_ws):
     repo = Repository(tmp_path / "t.db")
     writer = SheetsWriter(fake_ws)
 
-    n = run_once(adapter, repo, writer)
+    n = run_once(adapter, repo, writer).written
 
     assert n == 1
     # Sheet has header + 1 row
@@ -101,7 +101,7 @@ def test_real_website_filtered_out(tmp_path, fake_ws):
     )
     repo = Repository(tmp_path / "t.db")
     writer = SheetsWriter(fake_ws)
-    n = run_once(StubAdapter([has_real, no_site, social]), repo, writer, _StrongAuditor())
+    n = run_once(StubAdapter([has_real, no_site, social]), repo, writer, _StrongAuditor()).written
     assert n == 2  # real-site business excluded
     tags = [fake_ws.rows[r][_col("Consulting Opportunity")] for r in (1, 2)]
     assert "no website" in tags
@@ -172,6 +172,127 @@ def test_join_fires_across_address_textual_variants(tmp_path, fake_ws):
     row = fake_ws.rows[1]
     assert row[_col("Owner Name")] == "Jay Noble"
     assert row[_col("Phone Number")] == "410-555-0000"
+
+
+def test_dry_run_writes_nothing_to_sheet(tmp_path, fake_ws):
+    raw = RawBusiness(source="yelp", name="Joe's Pizza",
+                      address="123 Main St", phone="410-555-1234")
+    repo = Repository(tmp_path / "t.db")
+    writer = SheetsWriter(fake_ws)
+    result = run_once(StubAdapter([raw]), repo, writer, dry_run=True)
+    n = result.written
+    # Header row is fine (ensure_schema), but no data row appended.
+    assert len(fake_ws.rows) == 1
+    # Business still recorded in SQLite (run_once is cheap to rerun).
+    assert repo.conn.execute(
+        "SELECT COUNT(*) FROM businesses"
+    ).fetchone()[0] == 1
+    # No sheet_row_map entries.
+    assert repo.conn.execute(
+        "SELECT COUNT(*) FROM sheet_row_map"
+    ).fetchone()[0] == 0
+    # written counter is 0.
+    assert n == 0
+
+
+class _CountingAuditor:
+    def __init__(self):
+        self.calls = 0
+
+    def audit(self, url):
+        self.calls += 1
+        return AuditReport(
+            flags=AuditFlags(
+                reachable=True, https=False, redirects_to_https=False,
+                has_viewport=False, body_substantial=False,
+                response_time_ok=False, last_modified_fresh=False,
+            ),
+            fetched_at="2026-04-19T00:00:00+00:00",
+            status_code=200, elapsed_ms=100,
+        )
+
+    def close(self):
+        pass
+
+
+def test_reaudit_bypasses_freshness_cache(tmp_path, fake_ws):
+    raw = RawBusiness(source="yelp", name="Biz",
+                      address="1 Main", website="https://biz.example")
+    repo = Repository(tmp_path / "t.db")
+    writer = SheetsWriter(fake_ws)
+    auditor = _CountingAuditor()
+
+    run_once(StubAdapter([raw]), repo, writer, auditor)
+    assert auditor.calls == 1
+
+    # Second run: freshness would normally suppress re-audit.
+    run_once(StubAdapter([raw]), repo, writer, auditor)
+    assert auditor.calls == 1
+
+    # With reaudit=True we force a fresh audit.
+    run_once(StubAdapter([raw]), repo, writer, auditor, reaudit=True)
+    assert auditor.calls == 2
+
+
+def test_run_summary_counts(tmp_path, fake_ws):
+    from shmoney.orchestrator import run_once as _run
+    rows = [
+        RawBusiness(source="yelp", name="No Site", address="1 Main", website=None),
+        RawBusiness(source="yelp", name="Social", address="2 Main",
+                    website="https://facebook.com/s"),
+        RawBusiness(source="yelp", name="Strong",
+                    address="3 Main", website="https://strong.example"),
+    ]
+    repo = Repository(tmp_path / "t.db")
+    writer = SheetsWriter(fake_ws)
+    result = _run(StubAdapter(rows), repo, writer, _StrongAuditor())
+    # Backward-compat: still returns int OR a summary object with .written.
+    written = result.written if hasattr(result, "written") else result
+    assert written == 2
+    if hasattr(result, "fetched"):
+        assert result.fetched == 3
+        assert result.canonicalized == 3
+        assert result.qualified_out == 1  # strong real site filtered
+
+
+def test_sheet_sync_rebuilds_rows_from_sqlite(tmp_path, fake_ws):
+    from shmoney.orchestrator import sheet_sync
+
+    rows = [
+        RawBusiness(source="yelp", name="Biz A", address="1 Main",
+                    phone="410-555-1111", website=None),
+        RawBusiness(source="yelp", name="Biz B", address="2 Main",
+                    phone="410-555-2222", website="https://facebook.com/b"),
+    ]
+    repo = Repository(tmp_path / "t.db")
+    writer = SheetsWriter(fake_ws)
+    run_once(StubAdapter(rows), repo, writer)
+    assert len(fake_ws.rows) == 3  # header + 2 rows
+
+    # Operator deletes data rows from the Sheet, leaves header.
+    fake_ws.rows = [fake_ws.rows[0]]
+
+    # Run sheet-sync — reconstructs rows from sqlite.
+    writer2 = SheetsWriter(fake_ws)
+    n = sheet_sync(repo, writer2)
+    assert n == 2
+    assert len(fake_ws.rows) == 3
+    names = {fake_ws.rows[1][_col("Business Name")],
+             fake_ws.rows[2][_col("Business Name")]}
+    assert names == {"Biz A", "Biz B"}
+
+
+def test_sheet_sync_is_idempotent(tmp_path, fake_ws):
+    from shmoney.orchestrator import sheet_sync
+
+    raw = RawBusiness(source="yelp", name="Biz", address="1 Main",
+                      phone="410-555-1111")
+    repo = Repository(tmp_path / "t.db")
+    writer = SheetsWriter(fake_ws)
+    run_once(StubAdapter([raw]), repo, writer)
+    before = [list(r) for r in fake_ws.rows]
+    sheet_sync(repo, SheetsWriter(fake_ws))
+    assert fake_ws.rows == before
 
 
 def test_rerun_does_not_duplicate(tmp_path, fake_ws):
