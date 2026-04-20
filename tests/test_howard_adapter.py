@@ -57,7 +57,10 @@ def test_parses_record_into_raw_business():
     b = results[0]
     assert b.source == "howard-license"
     assert b.name == "Curry & Kabob"
-    assert b.owner_name == "Ruma, Inc."
+    # owner_name is intentionally None — Howard's Socrata feed has no human
+    # owner, only the licensed entity. A later canonical_key join with
+    # OpenCorporates/MBE fills it in with a real person.
+    assert b.owner_name is None
     assert b.address == "10451 Twin Rivers Road, #132, Columbia MD 21044"
     assert b.business_type == "Beer, Wine and Liquor"
 

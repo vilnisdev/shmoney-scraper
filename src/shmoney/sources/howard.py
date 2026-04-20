@@ -47,7 +47,6 @@ class HowardLicenseAdapter(LicenseAdapterBase):
             source=self.source_name,
             name=name,
             address=(rec.get("address") or "").strip(),
-            owner_name=corp or None,
             business_type=(rec.get("description") or "").strip() or None,
             raw=rec,
         )
