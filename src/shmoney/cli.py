@@ -5,6 +5,7 @@ from .config import load_config
 from .orchestrator import run_once
 from .repo import Repository
 from .sheets import SheetsWriter
+from .sources.howard import HowardLicenseAdapter
 from .sources.baltimore_city import BaltimoreCityLicenseAdapter
 from .sources.opencorporates import OpenCorporatesMDAdapter
 from .sources.yelp import YelpFusionAdapter
@@ -76,6 +77,8 @@ def run(
                 query=cfg.opencorporates_query or term,
                 limit=limit,
             )
+        elif source == "howard":
+            adapter = HowardLicenseAdapter(limit=limit)
         elif source == "baltimore-city":
             adapter = BaltimoreCityLicenseAdapter(limit=limit)
         elif source in {"harford", "carroll"}:
