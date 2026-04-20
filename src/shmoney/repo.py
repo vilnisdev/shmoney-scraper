@@ -2,7 +2,7 @@ import json
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Iterator, Optional
 
 from .audit import AuditFlags, AuditReport
 from .sources.base import RawBusiness
@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS sheet_row_map (
 CREATE TABLE IF NOT EXISTS source_watermarks (
     source TEXT PRIMARY KEY,
     cursor INTEGER NOT NULL DEFAULT 0,
+    cursor_text TEXT,
     last_run_ts TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -68,6 +69,17 @@ class Repository:
         self.conn = sqlite3.connect(str(self.db_path), isolation_level=None)
         self.conn.row_factory = sqlite3.Row
         self.conn.executescript(_SCHEMA)
+        self._migrate()
+
+    def _migrate(self) -> None:
+        # Idempotent: add cursor_text to source_watermarks if an older DB
+        # predates it. ALTER TABLE ADD COLUMN is safe on existing rows.
+        cols = {
+            row["name"]
+            for row in self.conn.execute("PRAGMA table_info(source_watermarks)")
+        }
+        if "cursor_text" not in cols:
+            self.conn.execute("ALTER TABLE source_watermarks ADD COLUMN cursor_text TEXT")
 
     def record_raw(self, source: str, canonical_key: str, payload: dict) -> None:
         self.conn.execute(
@@ -233,6 +245,43 @@ class Repository:
 
     def clear_watermark(self, source: str) -> None:
         self.conn.execute("DELETE FROM source_watermarks WHERE source = ?", (source,))
+
+    def get_text_watermark(self, source: str) -> Optional[str]:
+        row = self.conn.execute(
+            "SELECT cursor_text FROM source_watermarks WHERE source = ?", (source,)
+        ).fetchone()
+        return row["cursor_text"] if row else None
+
+    def set_text_watermark(self, source: str, cursor_text: str) -> None:
+        self.conn.execute(
+            """
+            INSERT INTO source_watermarks (source, cursor, cursor_text) VALUES (?, 0, ?)
+            ON CONFLICT(source) DO UPDATE SET
+                cursor_text = excluded.cursor_text,
+                last_run_ts = CURRENT_TIMESTAMP
+            """,
+            (source, cursor_text),
+        )
+
+    def iter_businesses_missing_owner(
+        self,
+        limit: Optional[int] = None,
+        after_key: Optional[str] = None,
+    ) -> Iterator[tuple[str, str, str]]:
+        sql = (
+            "SELECT canonical_key, name, address FROM businesses "
+            "WHERE owner_name IS NULL"
+        )
+        params: list = []
+        if after_key:
+            sql += " AND canonical_key > ?"
+            params.append(after_key)
+        sql += " ORDER BY canonical_key"
+        if limit is not None:
+            sql += " LIMIT ?"
+            params.append(limit)
+        for row in self.conn.execute(sql, params):
+            yield (row["canonical_key"], row["name"], row["address"])
 
     def reset(self) -> None:
         for table in ("raw_fetches", "businesses", "sheet_row_map",

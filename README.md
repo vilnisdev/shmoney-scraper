@@ -94,7 +94,36 @@ the last checkpointed offset. Successful runs clear the watermark.
 ```bash
 pipeline sheet-sync      # rebuild Sheet rows from SQLite (e.g. after an accidental delete)
 pipeline reset           # wipe SQLite only (not the Sheet). --yes skips the prompt.
+pipeline enrich          # fill Owner Name / formation date on existing rows via SDAT.
 ```
+
+## Enrichment (SDAT Business Express)
+
+`pipeline enrich --source md-sdat-direct` iterates `businesses WHERE owner_name
+IS NULL`, queries Maryland SDAT's public Business Express portal, and fills
+`owner_name` (officer for corporations, resident agent for LLCs) and
+`registered_at` via the existing COALESCE upsert. Hit rate is realistically
+30–45% — corporations are the reliable wins; sole proprietorships aren't in
+SDAT at all.
+
+Ban-avoidance defaults (intentionally conservative, not operator-configurable):
+- 4s min interval ± 1s jitter between requests.
+- Single-threaded, single session.
+- `robots.txt` consulted at init; refusal aborts the run.
+- 429 / challenge-page response = immediate `SdatCircuitBreakerOpen` abort,
+  watermark saved so next run resumes.
+- 5xx tolerated once with a 10s backoff; second failure aborts.
+- Every response cached to `data/sdat_cache/` — reruns never re-hit the portal.
+- `--limit` hard-capped at 200.
+
+```bash
+pipeline enrich --dry-run              # prints candidate list, zero network
+pipeline enrich --limit 25             # default; processes up to 25 rows
+```
+
+First-time use: capture a real search-results + detail HTML pair from the live
+portal and sanity-check that the parsers in `src/shmoney/sources/sdat_direct.py`
+find the expected field labels. Fixtures under `tests/` are synthetic.
 
 ## Diagnostics
 

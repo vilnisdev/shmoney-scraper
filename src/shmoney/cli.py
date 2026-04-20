@@ -179,5 +179,97 @@ def reset(
     typer.echo("pipeline reset ok")
 
 
+_ENRICH_HARD_MAX = 200
+
+
+@app.command("enrich")
+def enrich_cmd(
+    source: str = typer.Option("md-sdat-direct", "--source"),
+    limit: int = typer.Option(25, "--limit"),
+    dry_run: bool = typer.Option(False, "--dry-run"),
+) -> None:
+    if source != "md-sdat-direct":
+        raise typer.BadParameter(
+            f"enrich source {source!r} not implemented"
+        )
+    limit = min(max(limit, 0), _ENRICH_HARD_MAX)
+    cfg = load_config()
+    repo = Repository(cfg.db_path)
+    try:
+        after = repo.get_text_watermark(source)
+        candidates = list(
+            repo.iter_businesses_missing_owner(limit=limit, after_key=after)
+        )
+        typer.echo(
+            f"[{source}] candidates={len(candidates)} limit={limit} "
+            f"resume_after={after!r} dry_run={dry_run}"
+        )
+        if dry_run:
+            for key, name, addr in candidates:
+                typer.echo(f"  DRY {key} name={name!r} addr={addr!r}")
+            return
+        if not candidates:
+            return
+
+        from .sources.sdat_direct import (
+            SdatCircuitBreakerOpen,
+            SdatEnricher,
+            pick_owner,
+        )
+        from .sources.base import RawBusiness
+        from dataclasses import asdict
+
+        enricher = SdatEnricher(
+            cache_dir=cfg.db_path.parent / "sdat_cache"
+        )
+        queried = matched = filled = skipped_dead = cache_hits = 0
+        aborted: str | None = None
+        try:
+            for key, name, addr in candidates:
+                queried += 1
+                try:
+                    rec = enricher.enrich(name, address_hint=addr)
+                except SdatCircuitBreakerOpen as e:
+                    aborted = str(e)
+                    typer.echo(f"  ABORT {key}: {aborted}")
+                    break
+                if rec is None:
+                    skipped_dead += 1
+                    typer.echo(f"  MISS {key} name={name!r}")
+                    continue
+                matched += 1
+                owner = pick_owner(rec)
+                if not owner:
+                    typer.echo(f"  NO-OWNER {key} legal={rec.legal_name!r}")
+                    repo.set_text_watermark(source, key)
+                    continue
+                raw = RawBusiness(
+                    source=source,
+                    name=name,
+                    address=addr,
+                    owner_name=owner,
+                    registered_at=rec.formation_date,
+                )
+                repo.record_raw(source, key, asdict(raw))
+                repo.upsert_business(key, raw)
+                repo.set_text_watermark(source, key)
+                filled += 1
+                typer.echo(
+                    f"  OK {key} owner={owner!r} formed={rec.formation_date}"
+                )
+        finally:
+            enricher.close()
+
+        typer.echo(
+            f"[{source}] queried={queried} matched={matched} "
+            f"owner_filled={filled} skipped={skipped_dead} "
+            f"cache_hits={cache_hits} aborted_on={aborted!r}"
+        )
+        if aborted:
+            raise typer.Exit(code=2)
+    finally:
+        repo.close()
+
+
 def main() -> None:
     app()

@@ -57,6 +57,46 @@ def test_watermark_scoped_per_source(tmp_path):
     assert r.get_watermark("anne-arundel-license") == 300
 
 
+def test_text_watermark_roundtrip(tmp_path):
+    r = Repository(tmp_path / "t.db")
+    assert r.get_text_watermark("md-sdat-direct") is None
+    r.set_text_watermark("md-sdat-direct", "abc123")
+    assert r.get_text_watermark("md-sdat-direct") == "abc123"
+    r.set_text_watermark("md-sdat-direct", "def456")
+    assert r.get_text_watermark("md-sdat-direct") == "def456"
+
+
+def test_text_and_int_watermarks_coexist(tmp_path):
+    r = Repository(tmp_path / "t.db")
+    r.set_watermark("howard-license", 500)
+    r.set_text_watermark("md-sdat-direct", "key-xyz")
+    assert r.get_watermark("howard-license") == 500
+    assert r.get_text_watermark("md-sdat-direct") == "key-xyz"
+
+
+def test_iter_businesses_missing_owner(tmp_path):
+    r = Repository(tmp_path / "t.db")
+    r.upsert_business("k1", RawBusiness(source="a", name="A", address="1"))
+    r.upsert_business("k2", RawBusiness(source="a", name="B", address="2",
+                                        owner_name="Bob"))
+    r.upsert_business("k3", RawBusiness(source="a", name="C", address="3"))
+    rows = list(r.iter_businesses_missing_owner())
+    keys = [k for k, _, _ in rows]
+    assert keys == ["k1", "k3"]
+
+
+def test_iter_businesses_missing_owner_respects_limit_and_cursor(tmp_path):
+    r = Repository(tmp_path / "t.db")
+    for k in ("k1", "k2", "k3", "k4"):
+        r.upsert_business(k, RawBusiness(source="a", name=k, address="x"))
+    first = [k for k, _, _ in r.iter_businesses_missing_owner(limit=2)]
+    assert first == ["k1", "k2"]
+    second = [
+        k for k, _, _ in r.iter_businesses_missing_owner(limit=2, after_key="k2")
+    ]
+    assert second == ["k3", "k4"]
+
+
 def test_reset_wipes_all_tables(tmp_path):
     r = Repository(tmp_path / "t.db")
     raw = RawBusiness(source="yelp", name="Joe", address="1 Main")
