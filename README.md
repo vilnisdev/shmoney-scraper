@@ -1,1 +1,120 @@
 # shmoney-scraper
+
+Baltimore-metro small-business lead pipeline. Pulls records from public
+license feeds and Yelp, deduplicates by canonicalized name+address, audits
+any discovered websites, scores online presence 1–5, and writes qualified
+leads to a Google Sheet.
+
+## Setup
+
+Requires Python 3.11+.
+
+```bash
+git clone https://github.com/vilnisdev/shmoney-scraper.git
+cd shmoney-scraper
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+```
+
+Run the test suite to confirm the install:
+
+```bash
+pytest
+```
+
+## Credentials
+
+Copy `.env.example` to `.env` (or export directly) and fill in:
+
+| Var | Required | What it is |
+| --- | --- | --- |
+| `YELP_API_KEY` | yes | [Yelp Fusion](https://docs.developer.yelp.com/) API key. |
+| `GOOGLE_SHEET_ID` | yes | ID segment of the target Sheet URL. |
+| `GOOGLE_SA_JSON_PATH` | yes | Path to Google Cloud service-account JSON. |
+| `DB_PATH` | no | SQLite path. Defaults to `data/pipeline.db`. |
+| `OPENCORPORATES_API_TOKEN` | for `--source md-sdat` | OpenCorporates Maryland feed. |
+| `OPENCORPORATES_QUERY` | no | Override the search term for md-sdat. |
+
+### Provisioning a Google service account
+
+1. In Google Cloud Console: create a project, enable the **Google Sheets
+   API**, create a service account, and download its JSON key.
+2. Point `GOOGLE_SA_JSON_PATH` at that file.
+3. Share the target Sheet with the service account's `client_email`
+   (Editor). Without this, writes fail with a 403.
+
+## One-shot usage
+
+Initialize the DB + Sheet header:
+
+```bash
+pipeline init
+```
+
+Pull 20 Yelp restaurant records in Baltimore:
+
+```bash
+pipeline run --source yelp --location "Baltimore, MD" --term "restaurants" --limit 20
+```
+
+Run summary line printed at end:
+
+```
+[yelp] fetched=20 canonicalized=20 qualified_out=4 written=16
+```
+
+## Per-source usage
+
+| Source | Command | Notes |
+| --- | --- | --- |
+| Yelp Fusion | `pipeline run --source yelp --term "…"` | Uses `YELP_API_KEY`. |
+| OpenCorporates (MD SDAT) | `pipeline run --source md-sdat` | Uses `OPENCORPORATES_API_TOKEN`. |
+| Baltimore City MBE/WBE | `pipeline run --source baltimore-city` | Public ArcGIS feed. |
+| Howard County liquor | `pipeline run --source howard` | Public Socrata feed. |
+| Anne Arundel liquor | `pipeline run --source anne-arundel` | Public ArcGIS feed. |
+
+Jurisdictions without a public feed (`harford`, `carroll`, `baltimore-county`)
+fail loudly and point at `docs/license-sources.md`.
+
+## Operational flags
+
+| Flag | Effect |
+| --- | --- |
+| `--limit N` | Stop after N raw records per source. |
+| `--dry-run` | Full pipeline, but skip Sheet writes + `sheet_row_map` writes. |
+| `--reaudit` | Bypass the 30-day audit freshness cache and re-audit. |
+
+License adapters checkpoint their ArcGIS/Socrata offset after each page to
+`source_watermarks`. If a run is killed, the next invocation resumes from
+the last checkpointed offset. Successful runs clear the watermark.
+
+## Subcommands
+
+```bash
+pipeline sheet-sync      # rebuild Sheet rows from SQLite (e.g. after an accidental delete)
+pipeline reset           # wipe SQLite only (not the Sheet). --yes skips the prompt.
+```
+
+## Diagnostics
+
+```bash
+python scripts/find_joins.py
+```
+
+Prints every `canonical_key` in `raw_fetches` that appears under more than
+one `source` — i.e. cross-source matches where `owner_name` / `phone`
+should have merged via COALESCE.
+
+## Troubleshooting
+
+- **`missing env vars: [...]`** — copy `.env.example`, fill in the listed keys, re-run.
+- **`gspread.exceptions.APIError: 403`** — service account lacks Editor access to the Sheet. Share the Sheet with the service account email.
+- **`Invalid value: source 'foo' not implemented`** — see `docs/license-sources.md` for the supported list and deferral rationale.
+- **Sheet rows disappeared** — run `pipeline sheet-sync` to rebuild from SQLite.
+- **Stuck on an old cursor** — `sqlite3 data/pipeline.db 'DELETE FROM source_watermarks WHERE source = ?'` with the adapter's source_name (e.g. `howard-license`).
+- **Owner Name column blank outside Baltimore City** — expected. The OpenCorporates (md-sdat) source is the fallback, but access is gated; see `docs/license-sources.md`.
+
+## Further reading
+
+- `docs/license-sources.md` — per-jurisdiction feed status.
