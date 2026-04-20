@@ -5,8 +5,9 @@ from .config import load_config
 from .orchestrator import run_once
 from .repo import Repository
 from .sheets import SheetsWriter
-from .sources.howard import HowardLicenseAdapter
+from .sources.anne_arundel import AnneArundelLicenseAdapter
 from .sources.baltimore_city import BaltimoreCityLicenseAdapter
+from .sources.howard import HowardLicenseAdapter
 from .sources.opencorporates import OpenCorporatesMDAdapter
 from .sources.yelp import YelpFusionAdapter
 
@@ -81,7 +82,9 @@ def run(
             adapter = HowardLicenseAdapter(limit=limit)
         elif source == "baltimore-city":
             adapter = BaltimoreCityLicenseAdapter(limit=limit)
-        elif source in {"harford", "carroll"}:
+        elif source == "anne-arundel":
+            adapter = AnneArundelLicenseAdapter(limit=limit)
+        elif source in {"harford", "carroll", "baltimore-county"}:
             raise typer.BadParameter(
                 f"source {source!r} has no public license feed — see docs/license-sources.md"
             )
