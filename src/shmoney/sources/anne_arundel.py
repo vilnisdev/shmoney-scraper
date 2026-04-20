@@ -6,39 +6,31 @@ from .base import RawBusiness
 from .license_base import LicenseAdapterBase
 
 
-FEATURE_SERVICE_BASE = "https://services1.arcgis.com"
+FEATURE_SERVICE_BASE = "https://gis.aacounty.org"
 QUERY_PATH = (
-    "/UWYHeuuJISiGmgXx/arcgis/rest/services/MBWOO_Geocoded/FeatureServer/0/query"
+    "/arcgis/rest/services/OpenData/Planning_aacoPZProd_OpenData/FeatureServer/9/query"
 )
 
 
 def _compose_address(a: dict) -> str:
-    street = (a.get("user_streetaddress") or "").strip()
+    street = (a.get("user_street_address") or "").strip()
     city = (a.get("user_city") or "").strip()
-    state = (a.get("user_state") or "").strip()
-    zipc = (a.get("user_zipcode") or "").strip().rstrip("-")
+    state = (a.get("user_st") or "").strip()
+    zipc = (a.get("user_zip") or "").strip().split("-")[0]
     tail = " ".join(p for p in [state, zipc] if p)
     return ", ".join(p for p in [street, city, tail] if p)
 
 
-def _compose_owner(a: dict) -> Optional[str]:
-    first = (a.get("user_firstname") or "").strip()
-    last = (a.get("user_lastname") or "").strip()
-    name = " ".join(p for p in [first, last] if p)
-    return name or None
+class AnneArundelLicenseAdapter(LicenseAdapterBase):
+    """Anne Arundel County liquor license locations (ArcGIS feature service).
 
+    The feed carries only the licensed trade (DBA), address, and license
+    class. No human owner, no phone, no dates. `owner_name` is left None
+    so a later canonical_key join with OpenCorporates or Baltimore City
+    MBE can fill it in.
+    """
 
-def _clean_website(value) -> Optional[str]:
-    if not value:
-        return None
-    v = str(value).strip()
-    if not v or v.upper() == "NULL":
-        return None
-    return v
-
-
-class BaltimoreCityLicenseAdapter(LicenseAdapterBase):
-    source_name = "baltimore-city-license"
+    source_name = "anne-arundel-license"
 
     def _build_default_client(self) -> httpx.Client:
         return httpx.Client(base_url=FEATURE_SERVICE_BASE, timeout=30.0)
@@ -58,16 +50,13 @@ class BaltimoreCityLicenseAdapter(LicenseAdapterBase):
         return records, bool(payload.get("exceededTransferLimit"))
 
     def _to_raw_business(self, a: dict) -> Optional[RawBusiness]:
-        if (a.get("user_contractstatus") or "").strip().upper() != "CERTIFY":
+        name = (a.get("user_trade_name") or "").strip()
+        if not name:
             return None
         return RawBusiness(
             source=self.source_name,
-            name=(a.get("user_company") or "").strip(),
+            name=name,
             address=_compose_address(a),
-            phone=a.get("user_phone") or None,
-            website=_clean_website(a.get("user_website")),
-            business_type=a.get("user_category") or None,
-            owner_name=_compose_owner(a),
-            registered_at=a.get("user_origcert") or None,
+            business_type=(a.get("class") or "").strip() or None,
             raw=a,
         )
