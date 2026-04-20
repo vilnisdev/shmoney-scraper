@@ -140,6 +140,40 @@ def test_sdat_merges_into_existing_yelp_row(tmp_path, fake_ws):
     assert int(row[_col("Years in Business")]) >= 5
 
 
+def test_join_fires_across_address_textual_variants(tmp_path, fake_ws):
+    # Regression for PR #17 QA: Yelp and license sources emit the same
+    # logical address in different textual forms ("Ave" vs "Avenue",
+    # trailing-dash zip). The COALESCE join must still merge them.
+    yelp_raw = RawBusiness(
+        source="yelp",
+        name="Noble's Landscape Service",
+        address="3314 Elgin Ave, Baltimore, MD 21216",
+        phone="410-555-0000",
+        website=None,
+    )
+    license_raw = RawBusiness(
+        source="baltimore-city-license",
+        name="Noble's Landscape Service",
+        address="3314 Elgin Avenue, Baltimore, MD 21216-",
+        owner_name="Jay Noble",
+        registered_at="2000-01-16",
+    )
+    repo = Repository(tmp_path / "t.db")
+    writer = SheetsWriter(fake_ws)
+
+    run_once(StubAdapter([yelp_raw], source_name="yelp"), repo, writer)
+    run_once(
+        StubAdapter([license_raw], source_name="baltimore-city-license"),
+        repo,
+        writer,
+    )
+
+    assert len(fake_ws.rows) == 2  # header + one merged row
+    row = fake_ws.rows[1]
+    assert row[_col("Owner Name")] == "Jay Noble"
+    assert row[_col("Phone Number")] == "410-555-0000"
+
+
 def test_rerun_does_not_duplicate(tmp_path, fake_ws):
     raw = RawBusiness(
         source="yelp",
