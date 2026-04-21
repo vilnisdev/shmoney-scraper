@@ -93,6 +93,20 @@ def _name_overlap(name: str, candidate_text: str) -> float:
     return hits / len(tokens)
 
 
+def _domain_name_overlap(name: str, host: str) -> float:
+    """How many business-name tokens appear somewhere in the domain label.
+    `synergysystems.com` vs "Synergy Systems Inc" → 1.0 (2/2 tokens)."""
+    tokens = _tokenize_name(name)
+    if not tokens:
+        return 0.0
+    host_core = host.split(".")[0] if host else ""
+    hits = sum(1 for t in tokens if t in host_core)
+    return hits / len(tokens)
+
+
+_FALLBACK_PATHS = ("/contact", "/contact-us", "/about", "/about-us")
+
+
 def _extract_city(address: str) -> Optional[str]:
     # Expect "<street>, <city>, <state> <zip>" — pick the city segment.
     parts = [p.strip() for p in address.split(",")]
@@ -295,41 +309,80 @@ class WebsiteDiscoverer:
                 continue
             if host in _SOCIAL_AND_DIRECTORY_BLOCKLIST:
                 continue
-            overlap = _name_overlap(name, c["title"] + " " + c["snippet"])
-            if overlap < 0.7:
+            title_overlap = _name_overlap(name, c["title"] + " " + c["snippet"])
+            if title_overlap < 0.7:
                 continue
 
-            reasons = [f"name_overlap={overlap:.2f}", f"host={host}"]
+            reasons = [f"title_overlap={title_overlap:.2f}", f"host={host}"]
 
-            # Homepage verification.
-            try:
-                homepage = self._fetch("GET", c["url"])
-            except WebsiteDiscoveryCircuitBreakerOpen:
-                raise
-            except Exception:
+            # Verification signal 1: domain label contains name tokens.
+            # 0.5 is enough when combined with title overlap ≥ 0.7 — the
+            # combination is a very strong signal that this is the business.
+            # Paniagua namesake at 0.0 still fails; Synergy at 2/3 passes.
+            domain_overlap = _domain_name_overlap(name, host)
+            if domain_overlap >= 0.5:
+                reasons.append(f"domain_overlap={domain_overlap:.2f}")
+                candidate = DiscoveryResult(
+                    url=c["url"], confidence=title_overlap, reasons=reasons
+                )
+                if best is None or candidate.confidence > best.confidence:
+                    best = candidate
                 continue
-            homepage_lower = homepage.lower()
-            city_hit = bool(city and city.lower() in homepage_lower)
-            zip_hit = bool(zipc and zipc in homepage_lower)
-            phone_hit = False
-            if phone_digits:
-                homepage_digits = re.sub(r"\D", "", homepage_lower)
-                phone_hit = phone_digits in homepage_digits
-            if not (city_hit or zip_hit or phone_hit):
-                continue
-            if city_hit:
-                reasons.append("city_match")
-            if zip_hit:
-                reasons.append("zip_match")
-            if phone_hit:
-                reasons.append("phone_match")
 
+            # Verification signal 2: root homepage mentions city/zip/phone.
+            # Verification signal 3: fallback to /contact, /about pages when
+            # the root doesn't have the geo signal (common for service
+            # businesses whose landing page is marketing copy).
+            verified, verify_reasons = self._verify_location(
+                c["url"], city, zipc, phone_digits
+            )
+            if not verified:
+                continue
+            reasons.extend(verify_reasons)
             candidate = DiscoveryResult(
-                url=c["url"], confidence=overlap, reasons=reasons
+                url=c["url"], confidence=title_overlap, reasons=reasons
             )
             if best is None or candidate.confidence > best.confidence:
                 best = candidate
         return best
+
+    def _verify_location(
+        self,
+        root_url: str,
+        city: Optional[str],
+        zipc: Optional[str],
+        phone_digits: Optional[str],
+    ) -> tuple[bool, list[str]]:
+        """Fetch root + a few common contact/about paths and look for any
+        city / zip / phone co-mention. Returns (ok, reasons)."""
+        parsed = urllib.parse.urlparse(root_url)
+        base = f"{parsed.scheme}://{parsed.netloc}"
+        urls_to_try = [root_url] + [base + p for p in _FALLBACK_PATHS]
+        for url in urls_to_try:
+            try:
+                html = self._fetch("GET", url)
+            except WebsiteDiscoveryCircuitBreakerOpen:
+                raise
+            except Exception:
+                continue
+            html_lower = html.lower()
+            city_hit = bool(city and city.lower() in html_lower)
+            zip_hit = bool(zipc and zipc in html_lower)
+            phone_hit = False
+            if phone_digits:
+                html_digits = re.sub(r"\D", "", html_lower)
+                phone_hit = phone_digits in html_digits
+            if city_hit or zip_hit or phone_hit:
+                reasons = []
+                suffix = "" if url == root_url else f" ({parsed.path or '/'})"
+                if city_hit:
+                    reasons.append(f"city_match{suffix}")
+                if zip_hit:
+                    reasons.append(f"zip_match{suffix}")
+                if phone_hit:
+                    reasons.append(f"phone_match{suffix}")
+                return True, reasons
+        return False, []
 
     def close(self) -> None:
         self._client.close()

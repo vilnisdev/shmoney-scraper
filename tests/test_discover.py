@@ -149,7 +149,8 @@ def test_discover_happy_path(tmp_path):
     )
     assert result is not None
     assert "paniaguaenterprises.com" in result.url
-    assert "city_match" in result.reasons
+    # Domain match short-circuits the homepage verification.
+    assert any("domain_overlap" in r for r in result.reasons)
 
 
 def test_discover_rejects_social_domain(tmp_path):
@@ -172,6 +173,67 @@ def test_discover_rejects_social_domain(tmp_path):
     assert discoverer.discover(
         "X", address="1 Main St, Baltimore, MD 21201"
     ) is None
+
+
+def test_discover_accepts_when_domain_contains_name_tokens(tmp_path):
+    # Regression for false-negative on Synergy Systems & Services, Inc. —
+    # homepage doesn't mention Baltimore but the domain name does match.
+    ddg_synergy = """
+    <html><body>
+      <div class="result">
+        <a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A//synergysystems.com/">Synergy Systems &amp; Services Inc — Home</a>
+        <a class="result__snippet">Synergy Systems and Services Inc.</a>
+      </div>
+    </body></html>
+    """
+    bland_homepage = "<html><body><h1>Welcome</h1><p>Enterprise consulting.</p></body></html>"
+
+    def handler(request):
+        if "duckduckgo.com/html" in str(request.url):
+            return httpx.Response(200, text=ddg_synergy)
+        return httpx.Response(200, text=bland_homepage)
+
+    discoverer, _ = _discoverer(handler, cache_dir=tmp_path / "c")
+    result = discoverer.discover(
+        "Synergy Systems & Services, Inc.",
+        address="123 Main St, Baltimore, MD 21201",
+    )
+    assert result is not None
+    assert "synergysystems.com" in result.url
+    assert any("domain_overlap" in r for r in result.reasons)
+
+
+def test_discover_falls_back_to_contact_page(tmp_path):
+    # Root homepage has no geo signal; /contact does. Must accept via fallback.
+    # Design: name tokens = {acme, plumbing, baltimore, contractors}.
+    #   title+snippet covers all 4 → title_overlap = 1.0 (passes).
+    #   domain "servicefirm" covers 0/4 → fails domain gate → forces
+    #   location verification path; root fails, /contact hits.
+    ddg = """
+    <html><body>
+      <div class="result">
+        <a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A//servicefirm.example/">Acme Plumbing Baltimore Contractors</a>
+        <a class="result__snippet">Acme Plumbing Baltimore Contractors service roster.</a>
+      </div>
+    </body></html>
+    """
+
+    def handler(request):
+        url = str(request.url)
+        if "duckduckgo.com/html" in url:
+            return httpx.Response(200, text=ddg)
+        if url.endswith("/contact"):
+            return httpx.Response(200, text="<p>Baltimore, MD office.</p>")
+        # Root homepage + other paths: no geo signal.
+        return httpx.Response(200, text="<html><body>Welcome</body></html>")
+
+    discoverer, _ = _discoverer(handler, cache_dir=tmp_path / "c")
+    result = discoverer.discover(
+        "Acme Plumbing Baltimore Contractors",
+        address="1 Main St, Baltimore, MD 21201",
+    )
+    assert result is not None
+    assert any("city_match" in r for r in result.reasons)
 
 
 def test_discover_rejects_namesake_in_wrong_city(tmp_path):
@@ -231,18 +293,32 @@ def test_discover_challenge_page_trips_breaker(tmp_path):
 
 
 def test_discover_rate_limit_sleeps_between_fetches(tmp_path):
+    # Use a name whose domain doesn't match strongly, so the verification
+    # path forces multiple HTTP calls (DDG + homepage + fallback paths),
+    # exercising the throttle.
+    ddg = """
+    <html><body>
+      <div class="result">
+        <a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A//genericsite.example/">Acme Plumbing Baltimore Contractors</a>
+        <a class="result__snippet">Acme Plumbing Baltimore Contractors service.</a>
+      </div>
+    </body></html>
+    """
+
     def handler(request):
         url = str(request.url)
         if "duckduckgo.com/html" in url:
-            return httpx.Response(200, text=DDG_TWO_HITS_TEMPLATE)
-        return httpx.Response(200, text=HOMEPAGE_HAS_BALTIMORE)
+            return httpx.Response(200, text=ddg)
+        if url.endswith("/contact"):
+            return httpx.Response(200, text="<p>Baltimore office.</p>")
+        return httpx.Response(200, text="<html><body>Welcome</body></html>")
 
     discoverer, clock = _discoverer(handler, cache_dir=tmp_path / "c")
     discoverer.discover(
-        "Paniagua Enterprises, Inc.",
+        "Acme Plumbing Baltimore Contractors",
         address="1 Main St, Baltimore, MD 21201",
     )
-    # At least one 3.0s sleep between DDG and homepage fetch.
+    # At least one 3.0s throttle delay between fetches.
     assert any(abs(s - 3.0) < 0.01 for s in clock.sleeps), clock.sleeps
 
 
