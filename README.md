@@ -35,6 +35,7 @@ Copy `.env.example` to `.env` (or export directly) and fill in:
 | `DB_PATH` | no | SQLite path. Defaults to `data/pipeline.db`. |
 | `OPENCORPORATES_API_TOKEN` | for `--source md-sdat` | OpenCorporates Maryland feed. |
 | `OPENCORPORATES_QUERY` | no | Override the search term for md-sdat. |
+| `BRAVE_API_KEY` | for `discover-websites` | [Brave Search API](https://brave.com/search/api/) key; 2000 free queries/month. |
 
 ### Provisioning a Google service account
 
@@ -99,19 +100,25 @@ pipeline discover-websites       # fill missing websites via DuckDuckGo (strict 
 
 ### `discover-websites`
 
-For every row in `businesses` where `website IS NULL`, run a DuckDuckGo
-search, fuzzy-match the top 5 results against the business name, verify
-the candidate's homepage mentions the business city / zip / phone, and
-backfill `website` only when all gates pass.
+For every row in `businesses` where `website IS NULL`, query the **Brave
+Search API**, fuzzy-match the top 5 results against the business name,
+verify via domain-name match OR homepage (+ /contact + /about) mentions
+of city / zip / phone, and backfill `website` only when gates pass.
 
 Purpose: the adapter feeds (MBE `user_website`, Yelp's URL field) miss
 many real websites. Without discovery, the priority-ordered Sheet surfaces
 "no-website" rows that actually have sites, diluting the high-value leads.
 
-Ban-avoidance defaults:
-- 3.0s min interval ± 1.0s jitter.
-- DuckDuckGo `robots.txt` consulted at init.
-- 429 / challenge → circuit-breaker abort.
+**Setup**: sign up at https://brave.com/search/api/ (free tier: 2000
+queries/month, 1 qps). Put the key in `.env`:
+
+```
+BRAVE_API_KEY=...
+```
+
+Defaults:
+- 1.1s min interval ± 0.2s jitter (matches Brave's 1 qps free-tier cap).
+- 429 / auth failure / challenge → circuit-breaker abort.
 - All search + homepage responses cached under `data/discovery_cache/`.
 - `--limit` hard-capped at 500.
 
@@ -120,6 +127,10 @@ pipeline discover-websites --dry-run          # prints candidate list, zero netw
 pipeline discover-websites --limit 50         # conservative first pass
 pipeline sheet-sync                           # re-apply priority ordering
 ```
+
+An earlier DuckDuckGo backend was abandoned (see closed issue #38) — DDG's
+`/html/` endpoint actively shims scrapers and returned 403 after ~100
+queries.
 
 ## Diagnostics
 
