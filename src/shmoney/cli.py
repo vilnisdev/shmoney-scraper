@@ -192,6 +192,13 @@ _DISCOVER_HARD_MAX = 500
 def discover_websites_cmd(
     limit: int = typer.Option(25, "--limit"),
     dry_run: bool = typer.Option(False, "--dry-run"),
+    ignore_robots: bool = typer.Option(
+        False,
+        "--ignore-robots",
+        help="Bypass robots.txt check. DDG /html/ disallows bots; this is a "
+             "ToS violation with real IP-ban risk. Use only if you've "
+             "accepted that tradeoff.",
+    ),
 ) -> None:
     limit = min(max(limit, 0), _DISCOVER_HARD_MAX)
     cfg = load_config()
@@ -216,8 +223,14 @@ def discover_websites_cmd(
         from .sources.base import RawBusiness
         from dataclasses import asdict
 
+        if ignore_robots:
+            typer.echo(
+                "  WARNING --ignore-robots: DDG /html/ disallows bots; "
+                "IP-ban risk accepted."
+            )
         discoverer = WebsiteDiscoverer(
-            cache_dir=cfg.db_path.parent / "discovery_cache"
+            cache_dir=cfg.db_path.parent / "discovery_cache",
+            check_robots=not ignore_robots,
         )
         queried = matched = aborted_on = 0
         aborted: str | None = None
