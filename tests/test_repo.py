@@ -57,6 +57,23 @@ def test_watermark_scoped_per_source(tmp_path):
     assert r.get_watermark("anne-arundel-license") == 300
 
 
+def test_iter_businesses_missing_website(tmp_path):
+    r = Repository(tmp_path / "t.db")
+    r.upsert_business("k1", RawBusiness(source="a", name="NoSite",
+                                        address="1", phone="410"))
+    r.upsert_business("k2", RawBusiness(source="a", name="HasSite",
+                                        address="2", website="https://x.com"))
+    r.upsert_business("k3", RawBusiness(source="a", name="EmptyStr",
+                                        address="3", website=""))
+    rows = list(r.iter_businesses_missing_website())
+    names = {name for _, name, _, _ in rows}
+    assert names == {"NoSite", "EmptyStr"}
+    # Phone propagates through.
+    for key, _name, _addr, phone in rows:
+        if key == "k1":
+            assert phone == "410"
+
+
 def test_reset_wipes_all_tables(tmp_path):
     r = Repository(tmp_path / "t.db")
     raw = RawBusiness(source="yelp", name="Joe", address="1 Main")

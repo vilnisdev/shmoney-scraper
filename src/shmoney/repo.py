@@ -2,7 +2,7 @@ import json
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Iterator, Optional
 
 from .audit import AuditFlags, AuditReport
 from .sources.base import RawBusiness
@@ -233,6 +233,26 @@ class Repository:
 
     def clear_watermark(self, source: str) -> None:
         self.conn.execute("DELETE FROM source_watermarks WHERE source = ?", (source,))
+
+    def iter_businesses_missing_website(
+        self,
+        limit: Optional[int] = None,
+        after_key: Optional[str] = None,
+    ) -> Iterator[tuple[str, str, str, Optional[str]]]:
+        sql = (
+            "SELECT canonical_key, name, address, phone FROM businesses "
+            "WHERE website IS NULL OR website = ''"
+        )
+        params: list = []
+        if after_key:
+            sql += " AND canonical_key > ?"
+            params.append(after_key)
+        sql += " ORDER BY canonical_key"
+        if limit is not None:
+            sql += " LIMIT ?"
+            params.append(limit)
+        for row in self.conn.execute(sql, params):
+            yield (row["canonical_key"], row["name"], row["address"], row["phone"])
 
     def reset(self) -> None:
         for table in ("raw_fetches", "businesses", "sheet_row_map",
