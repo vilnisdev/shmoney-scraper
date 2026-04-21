@@ -92,8 +92,33 @@ the last checkpointed offset. Successful runs clear the watermark.
 ## Subcommands
 
 ```bash
-pipeline sheet-sync      # rebuild Sheet rows from SQLite (e.g. after an accidental delete)
-pipeline reset           # wipe SQLite only (not the Sheet). --yes skips the prompt.
+pipeline sheet-sync              # rebuild Sheet rows from SQLite in priority order
+pipeline reset                   # wipe SQLite only (not the Sheet). --yes skips the prompt.
+pipeline discover-websites       # fill missing websites via DuckDuckGo (strict match)
+```
+
+### `discover-websites`
+
+For every row in `businesses` where `website IS NULL`, run a DuckDuckGo
+search, fuzzy-match the top 5 results against the business name, verify
+the candidate's homepage mentions the business city / zip / phone, and
+backfill `website` only when all gates pass.
+
+Purpose: the adapter feeds (MBE `user_website`, Yelp's URL field) miss
+many real websites. Without discovery, the priority-ordered Sheet surfaces
+"no-website" rows that actually have sites, diluting the high-value leads.
+
+Ban-avoidance defaults:
+- 3.0s min interval ± 1.0s jitter.
+- DuckDuckGo `robots.txt` consulted at init.
+- 429 / challenge → circuit-breaker abort.
+- All search + homepage responses cached under `data/discovery_cache/`.
+- `--limit` hard-capped at 500.
+
+```bash
+pipeline discover-websites --dry-run          # prints candidate list, zero network
+pipeline discover-websites --limit 50         # conservative first pass
+pipeline sheet-sync                           # re-apply priority ordering
 ```
 
 ## Diagnostics

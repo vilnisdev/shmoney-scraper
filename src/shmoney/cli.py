@@ -185,5 +185,79 @@ def reset(
     typer.echo("pipeline reset ok")
 
 
+_DISCOVER_HARD_MAX = 500
+
+
+@app.command("discover-websites")
+def discover_websites_cmd(
+    limit: int = typer.Option(25, "--limit"),
+    dry_run: bool = typer.Option(False, "--dry-run"),
+) -> None:
+    limit = min(max(limit, 0), _DISCOVER_HARD_MAX)
+    cfg = load_config()
+    repo = Repository(cfg.db_path)
+    try:
+        candidates = list(repo.iter_businesses_missing_website(limit=limit))
+        typer.echo(
+            f"[website-discovery] candidates={len(candidates)} limit={limit} "
+            f"dry_run={dry_run}"
+        )
+        if dry_run:
+            for key, name, addr, phone in candidates:
+                typer.echo(f"  DRY {key} name={name!r}")
+            return
+        if not candidates:
+            return
+
+        from .discover import (
+            WebsiteDiscoverer,
+            WebsiteDiscoveryCircuitBreakerOpen,
+        )
+        from .sources.base import RawBusiness
+        from dataclasses import asdict
+
+        discoverer = WebsiteDiscoverer(
+            cache_dir=cfg.db_path.parent / "discovery_cache"
+        )
+        queried = matched = aborted_on = 0
+        aborted: str | None = None
+        try:
+            for key, name, addr, phone in candidates:
+                queried += 1
+                try:
+                    result = discoverer.discover(name, addr, phone)
+                except WebsiteDiscoveryCircuitBreakerOpen as e:
+                    aborted = str(e)
+                    typer.echo(f"  ABORT {key}: {aborted}")
+                    break
+                if result is None:
+                    typer.echo(f"  NO-MATCH {key} name={name!r}")
+                    continue
+                matched += 1
+                raw = RawBusiness(
+                    source="website-discovery",
+                    name=name,
+                    address=addr,
+                    website=result.url,
+                )
+                repo.record_raw("website-discovery", key, asdict(raw))
+                repo.upsert_business(key, raw)
+                typer.echo(
+                    f"  OK {key} url={result.url} "
+                    f"conf={result.confidence:.2f} reasons={result.reasons}"
+                )
+        finally:
+            discoverer.close()
+
+        typer.echo(
+            f"[website-discovery] queried={queried} matched={matched} "
+            f"aborted_on={aborted!r}"
+        )
+        if aborted:
+            raise typer.Exit(code=2)
+    finally:
+        repo.close()
+
+
 def main() -> None:
     app()
