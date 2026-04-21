@@ -13,6 +13,7 @@ class Config:
     db_path: Path
     opencorporates_api_token: str | None
     opencorporates_query: str
+    brave_api_key: str | None
 
 
 def load_config() -> Config:
@@ -28,4 +29,5 @@ def load_config() -> Config:
         db_path=Path(os.environ.get("DB_PATH", "data/pipeline.db")),
         opencorporates_api_token=os.environ.get("OPENCORPORATES_API_TOKEN") or None,
         opencorporates_query=os.environ.get("OPENCORPORATES_QUERY", ""),
+        brave_api_key=os.environ.get("BRAVE_API_KEY") or None,
     )

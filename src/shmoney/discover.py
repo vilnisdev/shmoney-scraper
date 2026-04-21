@@ -1,27 +1,29 @@
-"""DuckDuckGo-backed website discovery for rows where adapter feeds didn't
-supply a URL. Strict match: non-social domain + name-token overlap +
-homepage mentions city/zip/phone.
+"""Brave-Search-backed website discovery for rows where adapter feeds didn't
+supply a URL.
 
-Ban-safety mirrors the closed PR #28 SdatEnricher pattern: throttle +
-jitter + cache + circuit breaker + challenge detection.
+Strict match: non-social domain + name-token overlap + domain-name overlap
+OR homepage (root + /contact + /about) mentions city/zip/phone.
+
+Brave Search API has a proper free tier (2000 queries/month, 1 qps), JSON
+responses, and no anti-bot friction. Replaces the earlier DuckDuckGo scrape
+which was being silently shimmed then blocked (see issue #38).
 """
 from __future__ import annotations
 
 import hashlib
+import json
 import random
 import re
 import time
 import urllib.parse
-import urllib.robotparser
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
 
 import httpx
-from bs4 import BeautifulSoup
 
 
-DDG_URL = "https://html.duckduckgo.com/html/"
+BRAVE_SEARCH_URL = "https://api.search.brave.com/res/v1/web/search"
 
 DEFAULT_UA = (
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -44,7 +46,7 @@ _SOCIAL_AND_DIRECTORY_BLOCKLIST = frozenset(
         "glassdoor.com", "indeed.com",
         "crunchbase.com",
         "youtube.com", "pinterest.com",
-        "duckduckgo.com", "google.com",
+        "brave.com", "duckduckgo.com", "google.com", "bing.com",
     }
 )
 
@@ -65,9 +67,11 @@ _CHALLENGE_MARKERS = (
     "just a moment",
 )
 
+_FALLBACK_PATHS = ("/contact", "/contact-us", "/about", "/about-us")
+
 
 class WebsiteDiscoveryCircuitBreakerOpen(RuntimeError):
-    """Abort signal — 429 / challenge / repeated 5xx / robots disallow."""
+    """Abort signal — 429 / challenge / repeated 5xx / auth failure."""
 
 
 @dataclass
@@ -94,8 +98,6 @@ def _name_overlap(name: str, candidate_text: str) -> float:
 
 
 def _domain_name_overlap(name: str, host: str) -> float:
-    """How many business-name tokens appear somewhere in the domain label.
-    `synergysystems.com` vs "Synergy Systems Inc" → 1.0 (2/2 tokens)."""
     tokens = _tokenize_name(name)
     if not tokens:
         return 0.0
@@ -104,11 +106,7 @@ def _domain_name_overlap(name: str, host: str) -> float:
     return hits / len(tokens)
 
 
-_FALLBACK_PATHS = ("/contact", "/contact-us", "/about", "/about-us")
-
-
 def _extract_city(address: str) -> Optional[str]:
-    # Expect "<street>, <city>, <state> <zip>" — pick the city segment.
     parts = [p.strip() for p in address.split(",")]
     if len(parts) >= 2:
         return parts[-2] or None
@@ -149,44 +147,41 @@ def _host_of(url: str) -> str:
     return host
 
 
-def parse_ddg_results(html: str) -> list[dict]:
-    """DDG's /html/ endpoint returns a table of `<a class="result__a">` title
-    links with adjacent `<a class="result__snippet">` snippets. Host
-    exposed via the redirect URL's `uddg` query param."""
-    soup = BeautifulSoup(html, "html.parser")
-    results: list[dict] = []
-    for block in soup.select(".result"):
-        a = block.select_one("a.result__a")
-        if not a:
-            continue
-        href = a.get("href") or ""
-        title = a.get_text(" ", strip=True)
-        snippet_el = block.select_one(".result__snippet")
-        snippet = snippet_el.get_text(" ", strip=True) if snippet_el else ""
-        # DDG wraps outbound links in /l/?uddg=<encoded-url>.
-        parsed = urllib.parse.urlparse(href)
-        qs = urllib.parse.parse_qs(parsed.query)
-        uddg = qs.get("uddg") or []
-        url = uddg[0] if uddg else href
-        results.append({"title": title, "snippet": snippet, "url": url})
-        if len(results) >= 5:
-            break
-    return results
+def parse_brave_results(payload_text: str) -> list[dict]:
+    """Brave returns JSON: {"web": {"results": [{title, description, url}, ...]}}.
+    Normalize to [{title, snippet, url}] with at most 5 entries."""
+    try:
+        data = json.loads(payload_text)
+    except json.JSONDecodeError:
+        return []
+    web = data.get("web") or {}
+    raw = web.get("results") or []
+    out: list[dict] = []
+    for item in raw[:5]:
+        out.append({
+            "title": (item.get("title") or "").strip(),
+            "snippet": (item.get("description") or "").strip(),
+            "url": (item.get("url") or "").strip(),
+        })
+    return out
 
 
 class WebsiteDiscoverer:
     def __init__(
         self,
+        api_key: str,
         client: Optional[httpx.Client] = None,
-        min_interval_s: float = 3.0,
-        jitter_s: float = 1.0,
+        min_interval_s: float = 1.1,
+        jitter_s: float = 0.2,
         user_agent: str = DEFAULT_UA,
         now: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], None] = time.sleep,
         rng: Optional[random.Random] = None,
         cache_dir: Optional[Path] = None,
-        check_robots: bool = True,
     ):
+        if not api_key:
+            raise ValueError("BRAVE_API_KEY required")
+        self.api_key = api_key
         self.min_interval_s = min_interval_s
         self.jitter_s = jitter_s
         self.user_agent = user_agent
@@ -198,26 +193,10 @@ class WebsiteDiscoverer:
             self._cache_dir.mkdir(parents=True, exist_ok=True)
         self._last_fetch_at: Optional[float] = None
         self._client = client if client is not None else httpx.Client(
-            timeout=30.0, headers={"User-Agent": user_agent}, follow_redirects=True
+            timeout=30.0,
+            headers={"User-Agent": user_agent},
+            follow_redirects=True,
         )
-        if check_robots:
-            self._assert_robots_allows(DDG_URL)
-
-    def _assert_robots_allows(self, url: str) -> None:
-        parsed = urllib.parse.urlparse(url)
-        robots_url = f"{parsed.scheme}://{parsed.netloc}/robots.txt"
-        try:
-            resp = self._client.get(robots_url)
-        except httpx.HTTPError:
-            return
-        if resp.status_code >= 400:
-            return
-        rp = urllib.robotparser.RobotFileParser()
-        rp.parse(resp.text.splitlines())
-        if not rp.can_fetch(self.user_agent, url):
-            raise WebsiteDiscoveryCircuitBreakerOpen(
-                f"robots.txt disallows {url}"
-            )
 
     def _throttle(self) -> None:
         if self._last_fetch_at is None:
@@ -240,9 +219,14 @@ class WebsiteDiscoverer:
         p = self._cache_dir / f"{key}.html"
         p.write_text(text, encoding="utf-8")
 
-    def _fetch(self, method: str, url: str, params: Optional[dict] = None) -> str:
+    def _fetch(
+        self,
+        url: str,
+        params: Optional[dict] = None,
+        headers: Optional[dict] = None,
+    ) -> str:
         body = urllib.parse.urlencode(params or {}, doseq=True)
-        key = _cache_key(method, url, body)
+        key = _cache_key("GET", url, body)
         cached = self._cache_read(key)
         if cached is not None:
             return cached
@@ -253,8 +237,7 @@ class WebsiteDiscoverer:
         while True:
             attempts += 1
             try:
-                resp = self._client.get(url, params=params) if method == "GET" \
-                    else self._client.post(url, data=params)
+                resp = self._client.get(url, params=params, headers=headers)
             except httpx.HTTPError as e:
                 if attempts >= 2:
                     raise WebsiteDiscoveryCircuitBreakerOpen(f"network error: {e}") from e
@@ -270,6 +253,10 @@ class WebsiteDiscoverer:
                 raise WebsiteDiscoveryCircuitBreakerOpen(
                     f"429; retry-after={resp.headers.get('Retry-After')}"
                 )
+            if status in (401, 403):
+                raise WebsiteDiscoveryCircuitBreakerOpen(
+                    f"auth failure {status} — check BRAVE_API_KEY"
+                )
             if 500 <= status < 600:
                 if attempts >= 2:
                     raise WebsiteDiscoveryCircuitBreakerOpen(f"{status} after retry")
@@ -282,6 +269,17 @@ class WebsiteDiscoverer:
 
             self._cache_write(key, text)
             return text
+
+    def _search(self, query: str) -> list[dict]:
+        text = self._fetch(
+            BRAVE_SEARCH_URL,
+            params={"q": query, "count": "5"},
+            headers={
+                "Accept": "application/json",
+                "X-Subscription-Token": self.api_key,
+            },
+        )
+        return parse_brave_results(text)
 
     def discover(
         self,
@@ -299,8 +297,7 @@ class WebsiteDiscoverer:
         elif zipc:
             query += f" {zipc}"
 
-        search_html = self._fetch("GET", DDG_URL, params={"q": query})
-        candidates = parse_ddg_results(search_html)
+        candidates = self._search(query)
 
         best: Optional[DiscoveryResult] = None
         for c in candidates:
@@ -315,10 +312,6 @@ class WebsiteDiscoverer:
 
             reasons = [f"title_overlap={title_overlap:.2f}", f"host={host}"]
 
-            # Verification signal 1: domain label contains name tokens.
-            # 0.5 is enough when combined with title overlap ≥ 0.7 — the
-            # combination is a very strong signal that this is the business.
-            # Paniagua namesake at 0.0 still fails; Synergy at 2/3 passes.
             domain_overlap = _domain_name_overlap(name, host)
             if domain_overlap >= 0.5:
                 reasons.append(f"domain_overlap={domain_overlap:.2f}")
@@ -329,10 +322,6 @@ class WebsiteDiscoverer:
                     best = candidate
                 continue
 
-            # Verification signal 2: root homepage mentions city/zip/phone.
-            # Verification signal 3: fallback to /contact, /about pages when
-            # the root doesn't have the geo signal (common for service
-            # businesses whose landing page is marketing copy).
             verified, verify_reasons = self._verify_location(
                 c["url"], city, zipc, phone_digits
             )
@@ -353,14 +342,12 @@ class WebsiteDiscoverer:
         zipc: Optional[str],
         phone_digits: Optional[str],
     ) -> tuple[bool, list[str]]:
-        """Fetch root + a few common contact/about paths and look for any
-        city / zip / phone co-mention. Returns (ok, reasons)."""
         parsed = urllib.parse.urlparse(root_url)
         base = f"{parsed.scheme}://{parsed.netloc}"
         urls_to_try = [root_url] + [base + p for p in _FALLBACK_PATHS]
         for url in urls_to_try:
             try:
-                html = self._fetch("GET", url)
+                html = self._fetch(url)
             except WebsiteDiscoveryCircuitBreakerOpen:
                 raise
             except Exception:
