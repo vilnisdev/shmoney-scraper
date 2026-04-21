@@ -73,8 +73,14 @@ def build_business_row(
 
 
 def sheet_sync(repo: Repository, sheets: SheetsWriter) -> int:
+    """Rebuild the Sheet from SQLite in priority order.
+
+    Priority: rows with no website first (highest outreach value — target
+    doesn't exist online yet), then by `Online Presence` score ascending
+    (weakest real sites next, strongest last).
+    """
     sheets.ensure_schema()
-    count = 0
+    scored: list[tuple[bool, int, str, dict, object, int, Optional[str]]] = []
     for key in repo.list_sheet_keys():
         merged = repo.get_business(key)
         if not merged:
@@ -82,6 +88,15 @@ def sheet_sync(repo: Repository, sheets: SheetsWriter) -> int:
         classification = classify(merged.get("website"))
         audit_report = repo.get_audit(key)
         s, tag = score(classification, audit_report)
+        has_website = bool((merged.get("website") or "").strip())
+        scored.append((has_website, s, key, merged, classification, s, tag))
+
+    # False (no website) sorts before True; then score ascending.
+    scored.sort(key=lambda t: (t[0], t[1]))
+
+    sheets.reset_data_rows()
+    count = 0
+    for _, _, key, merged, classification, s, tag in scored:
         row_dict = build_business_row(merged, classification, s, tag)
         row_idx = sheets.upsert(key, row_dict)
         repo.record_sheet_row(key, row_idx)

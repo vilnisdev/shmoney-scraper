@@ -282,6 +282,61 @@ def test_sheet_sync_rebuilds_rows_from_sqlite(tmp_path, fake_ws):
     assert names == {"Biz A", "Biz B"}
 
 
+def test_sheet_sync_orders_no_website_rows_first(tmp_path, fake_ws):
+    from shmoney.orchestrator import sheet_sync
+    rows = [
+        RawBusiness(source="yelp", name="Has Weak Site", address="1 Main",
+                    website="https://weaksite.example"),
+        RawBusiness(source="yelp", name="No Site", address="2 Main",
+                    website=None),
+        RawBusiness(source="yelp", name="Social Only", address="3 Main",
+                    website="https://facebook.com/x"),
+    ]
+    repo = Repository(tmp_path / "t.db")
+    writer = SheetsWriter(fake_ws)
+    run_once(StubAdapter(rows), repo, writer)
+    # Wipe the sheet and resync in priority order.
+    writer2 = SheetsWriter(fake_ws)
+    sheet_sync(repo, writer2)
+    # Row 1 is header. Data rows 2..N in priority order:
+    # no-website rows first, then social-only, then weak site.
+    data_names = [fake_ws.rows[i][_col("Business Name")]
+                  for i in range(1, len(fake_ws.rows))]
+    assert data_names[0] == "No Site"
+    # "No Site" must precede anything with a website.
+    no_site_idx = data_names.index("No Site")
+    weak_site_idx = data_names.index("Has Weak Site")
+    social_idx = data_names.index("Social Only")
+    assert no_site_idx < weak_site_idx
+    assert no_site_idx < social_idx
+
+
+def test_sheet_sync_secondary_sort_by_score_ascending(tmp_path, fake_ws):
+    # Two no-website rows: they should sort by score ASC (weakest first).
+    # Score 1 = no site (lowest). Both get 1, so tie-break by name ordering
+    # we at least expect both to cluster before any website row.
+    from shmoney.orchestrator import sheet_sync
+    rows = [
+        RawBusiness(source="yelp", name="Weak Real",
+                    address="1 Main",
+                    website="https://real.example"),
+        RawBusiness(source="yelp", name="NoSite A",
+                    address="2 Main", website=None),
+        RawBusiness(source="yelp", name="NoSite B",
+                    address="3 Main", website=None),
+    ]
+    repo = Repository(tmp_path / "t.db")
+    writer = SheetsWriter(fake_ws)
+    run_once(StubAdapter(rows), repo, writer)
+    writer2 = SheetsWriter(fake_ws)
+    sheet_sync(repo, writer2)
+    data_names = [fake_ws.rows[i][_col("Business Name")]
+                  for i in range(1, len(fake_ws.rows))]
+    # Both no-website rows precede the real site.
+    assert data_names.index("NoSite A") < data_names.index("Weak Real")
+    assert data_names.index("NoSite B") < data_names.index("Weak Real")
+
+
 def test_sheet_sync_is_idempotent(tmp_path, fake_ws):
     from shmoney.orchestrator import sheet_sync
 

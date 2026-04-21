@@ -60,6 +60,12 @@ class _GspreadWorksheetAdapter:
             self._throttle()
             self._ws.update_cells(cells, value_input_option="RAW")
 
+    def clear_data_rows(self):
+        self._throttle()
+        # batch_clear leaves the row frame intact; resetting values avoids
+        # a separate resize + shape mismatch.
+        self._ws.batch_clear(["A2:ZZ"])
+
 
 @app.command()
 def init() -> None:
