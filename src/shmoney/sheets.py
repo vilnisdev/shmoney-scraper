@@ -37,6 +37,7 @@ class WorksheetClient(Protocol):
     def get_all_values(self) -> list[list[str]]: ...
     def append_row(self, values: list[str]) -> None: ...
     def batch_update_cells(self, updates: list[tuple[int, int, str]]) -> None: ...
+    def clear_data_rows(self) -> None: ...
 
 
 class SheetsWriter:
@@ -72,6 +73,15 @@ class SheetsWriter:
                 self._key_to_row[row[key_col]] = idx
         self._row_count = len(values)
         self._loaded = True
+
+    def reset_data_rows(self) -> None:
+        """Wipe all Sheet data rows (row 2 onward) and reset internal state.
+        Header row is preserved."""
+        if not self._loaded:
+            self.ensure_schema()
+        self.ws.clear_data_rows()
+        self._key_to_row = {}
+        self._row_count = 1
 
     def upsert(self, canonical_key: str, business: dict[str, str]) -> int:
         if not self._loaded:

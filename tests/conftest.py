@@ -20,6 +20,10 @@ class FakeWorksheet:
                 row.append("")
             row[c - 1] = v
 
+    def clear_data_rows(self) -> None:
+        if self.rows:
+            self.rows = self.rows[:1]
+
 
 @pytest.fixture
 def fake_ws():
