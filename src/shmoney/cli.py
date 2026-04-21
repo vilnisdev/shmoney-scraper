@@ -186,12 +186,26 @@ def reset(
 
 
 _DISCOVER_HARD_MAX = 500
+_BRAVE_MONTHLY_BUDGET = 900
+
+
+def _brave_month_key(dt=None) -> str:
+    from datetime import datetime as _dt, timezone as _tz
+    dt = dt or _dt.now(_tz.utc)
+    return dt.strftime("%Y-%m")
 
 
 @app.command("discover-websites")
 def discover_websites_cmd(
     limit: int = typer.Option(25, "--limit"),
     dry_run: bool = typer.Option(False, "--dry-run"),
+    monthly_budget: int = typer.Option(
+        _BRAVE_MONTHLY_BUDGET,
+        "--monthly-budget",
+        help="Hard-stop Brave queries at this many in the current UTC month. "
+             "Default is a buffer under Brave's 2000/mo free-tier cap so you "
+             "don't accidentally incur overage charges.",
+    ),
 ) -> None:
     limit = min(max(limit, 0), _DISCOVER_HARD_MAX)
     cfg = load_config()
@@ -222,9 +236,23 @@ def discover_websites_cmd(
                 "https://brave.com/search/api/ (2000 free queries/month) "
                 "and put the key in your .env."
             )
+        month = _brave_month_key()
+        used = repo.get_brave_query_count(month)
+        budget_remaining = max(0, monthly_budget - used)
+        typer.echo(
+            f"[website-discovery] brave_quota month={month} used={used} "
+            f"monthly_budget={monthly_budget} remaining={budget_remaining}"
+        )
+        if budget_remaining == 0:
+            raise typer.BadParameter(
+                f"Monthly Brave budget of {monthly_budget} already used. "
+                f"Raise with --monthly-budget or wait for the next UTC month."
+            )
         discoverer = WebsiteDiscoverer(
             api_key=cfg.brave_api_key,
             cache_dir=cfg.db_path.parent / "discovery_cache",
+            query_budget=budget_remaining,
+            on_query=lambda: repo.bump_brave_query_count(month),
         )
         queried = matched = aborted_on = 0
         aborted: str | None = None

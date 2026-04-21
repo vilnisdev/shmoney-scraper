@@ -45,6 +45,12 @@ CREATE TABLE IF NOT EXISTS source_watermarks (
     last_run_ts TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS brave_quota (
+    month_key TEXT PRIMARY KEY,
+    count INTEGER NOT NULL DEFAULT 0,
+    last_bumped_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS audits (
     canonical_key TEXT PRIMARY KEY,
     reachable INTEGER NOT NULL,
@@ -254,9 +260,27 @@ class Repository:
         for row in self.conn.execute(sql, params):
             yield (row["canonical_key"], row["name"], row["address"], row["phone"])
 
+    def get_brave_query_count(self, month_key: str) -> int:
+        row = self.conn.execute(
+            "SELECT count FROM brave_quota WHERE month_key = ?", (month_key,)
+        ).fetchone()
+        return int(row["count"]) if row else 0
+
+    def bump_brave_query_count(self, month_key: str) -> int:
+        self.conn.execute(
+            """
+            INSERT INTO brave_quota (month_key, count) VALUES (?, 1)
+            ON CONFLICT(month_key) DO UPDATE SET
+                count = count + 1,
+                last_bumped_at = CURRENT_TIMESTAMP
+            """,
+            (month_key,),
+        )
+        return self.get_brave_query_count(month_key)
+
     def reset(self) -> None:
         for table in ("raw_fetches", "businesses", "sheet_row_map",
-                      "source_watermarks", "audits"):
+                      "source_watermarks", "audits", "brave_quota"):
             self.conn.execute(f"DELETE FROM {table}")
 
     def close(self) -> None:

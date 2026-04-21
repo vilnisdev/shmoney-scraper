@@ -121,6 +121,10 @@ Defaults:
 - 429 / auth failure / challenge → circuit-breaker abort.
 - All search + homepage responses cached under `data/discovery_cache/`.
 - `--limit` hard-capped at 500.
+- **Monthly budget hard-stop at 900 queries** (buffer under Brave's
+  2000/mo free tier). Persistent per-UTC-month counter in SQLite. Cache
+  hits don't consume budget. Raise with `--monthly-budget N` if you've
+  moved to Brave's paid tier and accept the overage cost.
 
 ```bash
 pipeline discover-websites --dry-run          # prints candidate list, zero network

@@ -74,6 +74,17 @@ def test_iter_businesses_missing_website(tmp_path):
             assert phone == "410"
 
 
+def test_brave_query_count_roundtrip(tmp_path):
+    r = Repository(tmp_path / "t.db")
+    assert r.get_brave_query_count("2026-04") == 0
+    assert r.bump_brave_query_count("2026-04") == 1
+    assert r.bump_brave_query_count("2026-04") == 2
+    assert r.get_brave_query_count("2026-04") == 2
+    # Different month scopes separately.
+    assert r.bump_brave_query_count("2026-05") == 1
+    assert r.get_brave_query_count("2026-04") == 2
+
+
 def test_reset_wipes_all_tables(tmp_path):
     r = Repository(tmp_path / "t.db")
     raw = RawBusiness(source="yelp", name="Joe", address="1 Main")
