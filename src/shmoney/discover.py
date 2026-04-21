@@ -71,7 +71,7 @@ _FALLBACK_PATHS = ("/contact", "/contact-us", "/about", "/about-us")
 
 
 class WebsiteDiscoveryCircuitBreakerOpen(RuntimeError):
-    """Abort signal — 429 / challenge / repeated 5xx / auth failure."""
+    """Abort signal — 429 / challenge / repeated 5xx / auth failure / budget exhausted."""
 
 
 @dataclass
@@ -178,10 +178,15 @@ class WebsiteDiscoverer:
         sleep: Callable[[float], None] = time.sleep,
         rng: Optional[random.Random] = None,
         cache_dir: Optional[Path] = None,
+        query_budget: Optional[int] = None,
+        on_query: Optional[Callable[[], int]] = None,
     ):
         if not api_key:
             raise ValueError("BRAVE_API_KEY required")
         self.api_key = api_key
+        self._query_budget = query_budget
+        self._on_query = on_query
+        self._queries_this_session = 0
         self.min_interval_s = min_interval_s
         self.jitter_s = jitter_s
         self.user_agent = user_agent
@@ -271,9 +276,25 @@ class WebsiteDiscoverer:
             return text
 
     def _search(self, query: str) -> list[dict]:
+        # Budget check + persistent counter bump BEFORE issuing the request.
+        # Cached lookups don't hit the API, so we only count on cache miss.
+        params = {"q": query, "count": "5"}
+        body = urllib.parse.urlencode(params, doseq=True)
+        key = _cache_key("GET", BRAVE_SEARCH_URL, body)
+        if self._cache_read(key) is None:
+            if (
+                self._query_budget is not None
+                and self._queries_this_session >= self._query_budget
+            ):
+                raise WebsiteDiscoveryCircuitBreakerOpen(
+                    f"Brave query budget exhausted ({self._query_budget})"
+                )
+            self._queries_this_session += 1
+            if self._on_query is not None:
+                self._on_query()
         text = self._fetch(
             BRAVE_SEARCH_URL,
-            params={"q": query, "count": "5"},
+            params=params,
             headers={
                 "Accept": "application/json",
                 "X-Subscription-Token": self.api_key,

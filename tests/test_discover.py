@@ -277,3 +277,53 @@ def test_discover_cache_hits_skip_network(tmp_path):
 def test_missing_api_key_raises():
     with pytest.raises(ValueError, match="BRAVE_API_KEY"):
         WebsiteDiscoverer(api_key="")
+
+
+def test_query_budget_stops_after_n(tmp_path):
+    bumps = {"n": 0}
+
+    def handler(request):
+        return httpx.Response(200, text=_brave_payload([
+            {"title": "x", "description": "", "url": "https://x.example/"},
+        ]))
+
+    discoverer, _ = _discoverer(
+        handler,
+        cache_dir=tmp_path / "c",
+        query_budget=2,
+        on_query=lambda: bumps.__setitem__("n", bumps["n"] + 1),
+    )
+    discoverer.discover("Biz One", "1 Main St, Baltimore, MD 21201")
+    discoverer.discover("Biz Two", "2 Main St, Baltimore, MD 21201")
+    assert bumps["n"] == 2
+    with pytest.raises(WebsiteDiscoveryCircuitBreakerOpen, match="budget"):
+        discoverer.discover("Biz Three", "3 Main St, Baltimore, MD 21201")
+    assert bumps["n"] == 2  # not bumped for the aborted call
+
+
+def test_cached_searches_dont_consume_budget(tmp_path):
+    bumps = {"n": 0}
+
+    def handler(request):
+        return httpx.Response(200, text=_brave_payload([
+            {"title": "x", "description": "", "url": "https://x.example/"},
+        ]))
+
+    cache = tmp_path / "c"
+    d1, _ = _discoverer(
+        handler,
+        cache_dir=cache,
+        query_budget=10,
+        on_query=lambda: bumps.__setitem__("n", bumps["n"] + 1),
+    )
+    d1.discover("Biz One", "1 Main St, Baltimore, MD 21201")
+    assert bumps["n"] == 1
+
+    d2, _ = _discoverer(
+        handler,
+        cache_dir=cache,
+        query_budget=10,
+        on_query=lambda: bumps.__setitem__("n", bumps["n"] + 1),
+    )
+    d2.discover("Biz One", "1 Main St, Baltimore, MD 21201")
+    assert bumps["n"] == 1  # cache hit, no bump
